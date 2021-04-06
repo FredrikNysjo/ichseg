@@ -48,53 +48,80 @@ class SmartBrushTool:
         self.count = 0
 
 
-def apply_brush(image, texcoord, brush):
+def apply_brush_3d(image, texcoord, brush, spacing):
     """ Apply brush to image """
-    if abs(texcoord.x - 0.5) > 0.5 or abs(texcoord.y - 0.5) > 0.5 or abs(texcoord.z - 0.5) > 0.5:
-        return
     d, h, w = image.shape[0:3]
     center = texcoord * glm.vec3(w, h, d)
-    lower = center - glm.vec3(brush.size, brush.size, 0.0) * 0.5
-    upper = center + glm.vec3(brush.size, brush.size, 0.0) * 0.5
+    lower = center - glm.vec3(brush.size * (spacing.x / spacing)) * 0.5 - 0.5
+    upper = center + glm.vec3(brush.size * (spacing.x / spacing)) * 0.5 + 0.5
     lower = glm.ivec3(glm.clamp(lower, glm.vec3(0.0), glm.vec3(w - 1, h - 1, d - 1)))
     upper = glm.ivec3(glm.clamp(upper, glm.vec3(0.0), glm.vec3(w - 1, h - 1, d - 1)))
-    subimage = np.ones((1, upper.y - lower.y, upper.x - lower.x), dtype=np.uint8) * 255
-    xx = np.arange(glm.floor(lower.x - center.x + 0.5), glm.floor(upper.x - center.x + 0.5), 1.0)
-    yy = np.arange(glm.floor(lower.y - center.y + 0.5), glm.floor(upper.y - center.y + 0.5), 1.0)
-    x, y = np.meshgrid(xx, yy)
-    subimage[0,:,:] = ((x**2 + y**2)**0.5 < brush.size*0.5).astype(dtype=np.uint8) * 255
-    image[lower.z:upper.z+1,lower.y:upper.y,lower.x:upper.x] |= subimage
-    subimage = image[lower.z:upper.z+1,lower.y:upper.y,lower.x:upper.x]
+
+    xx = np.arange(lower.x - center.x + 0.5, upper.x - center.x + 0.5, 1.0)
+    yy = np.arange(lower.y - center.y + 0.5, upper.y - center.y + 0.5, 1.0)
+    zz = np.arange(lower.z - center.z + 0.5, upper.z - center.z + 0.5, 1.0)
+    z, x, y = np.meshgrid(zz, yy, xx, indexing='ij')
+    z *= spacing.z / spacing.x;  # Need to take slice spacing into account
+    subimage = (brush.size*0.5 - (x**2 + y**2 + z**2)**0.5 + 0.5) * 255.99
+    subimage = np.maximum(0, np.minimum(255, subimage)).astype(dtype=np.uint8)
+
+    image[lower.z:upper.z,lower.y:upper.y,lower.x:upper.x] |= subimage
+    subimage = image[lower.z:upper.z,lower.y:upper.y,lower.x:upper.x]
     return subimage, lower
 
 
-def apply_smartbrush(image, volume, texcoord, brush):
+def apply_brush(image, texcoord, brush, spacing):
+    """ Apply brush to image """
+    if abs(texcoord.x - 0.5) > 0.5 or abs(texcoord.y - 0.5) > 0.5 or abs(texcoord.z - 0.5) > 0.5:
+        return None
+    return apply_brush_3d(image, texcoord, brush, spacing)
+
+
+def apply_smartbrush_3d(image, volume, texcoord, brush, spacing):
+    """ Apply smart brush to image, using the method from SmartPaint.
+
+        Reference: F. Malmberg et al., "SmartPaint: a tool for
+        interactive segmentation of medical volume images", CMBBE, 2014.
+    """
+    d, h, w = image.shape[0:3]
+    center = texcoord * glm.vec3(w, h, d)
+    lower = center - glm.vec3(brush.size * (spacing.x / spacing)) * 0.5 - 0.5
+    upper = center + glm.vec3(brush.size * (spacing.x / spacing)) * 0.5 + 0.5
+    lower = glm.ivec3(glm.clamp(lower, glm.vec3(1.0), glm.vec3(w - 2, h - 2, d - 2)))
+    upper = glm.ivec3(glm.clamp(upper, glm.vec3(1.0), glm.vec3(w - 2, h - 2, d - 2)))
+
+    xx = np.arange(lower.x - center.x + 0.5, upper.x - center.x + 0.5, 1.0)
+    yy = np.arange(lower.y - center.y + 0.5, upper.y - center.y + 0.5, 1.0)
+    zz = np.arange(lower.z - center.z + 0.5, upper.z - center.z + 0.5, 1.0)
+    z, x, y = np.meshgrid(zz, yy, xx, indexing='ij')
+    z *= spacing.z / spacing.x;  # Need to take slice spacing into account
+
+    subimage = image[lower.z:upper.z,lower.y:upper.y,lower.x:upper.x].astype(dtype=np.float32)
+    midpoint = volume[int(center.z),int(center.y),int(center.x)] / 32768.0
+    intensity = volume[lower.z:upper.z,lower.y:upper.y,lower.x:upper.x].astype(dtype=np.float32)
+    intensity *= (1.0 / 32768.0)
+
+    value = subimage * (1.0 / 255.0)
+    sigma = np.maximum(0.0, 1.0 - (x**2 + y**2 + z**2)**0.5 / (brush.size * 0.5))
+    delta = np.abs(intensity - midpoint) * brush.delta_scaling
+    rho = np.maximum(0.0, 1.0 - delta)**brush.sensitivity
+    alpha = sigma * rho
+    subimage[:,:,:] = (0.05 * alpha + (1.0 - 0.05 * alpha) * value) * 255.0
+
+    subimage = np.maximum(0.0, np.minimum(255.0, subimage)).astype(dtype=np.uint8)
+    image[lower.z:upper.z,lower.y:upper.y,lower.x:upper.x] = subimage
+    return subimage, lower
+
+
+def apply_smartbrush(image, volume, texcoord, brush, spacing):
     """ Apply smart brush to image, using the method from SmartPaint.
 
         Reference: F. Malmberg et al., "SmartPaint: a tool for
         interactive segmentation of medical volume images", CMBBE, 2014.
     """
     if abs(texcoord.x - 0.5) > 0.5 or abs(texcoord.y - 0.5) > 0.5 or abs(texcoord.z - 0.5) > 0.5:
-        return
-    d, h, w = image.shape[0:3]
-    center = texcoord * glm.vec3(w, h, d)
-    lower = center - glm.vec3(brush.size, brush.size, 0.0) * 0.5
-    upper = center + glm.vec3(brush.size, brush.size, 0.0) * 0.5
-    lower = glm.ivec3(glm.clamp(lower, glm.vec3(1.0), glm.vec3(w - 2, h - 2, d - 2)))
-    upper = glm.ivec3(glm.clamp(upper, glm.vec3(1.0), glm.vec3(w - 2, h - 2, d - 2)))
-    subimage = image[lower.z:upper.z+1,:,:].astype(dtype=np.float32)
-    midpoint = float(volume[lower.z,int(center.y),int(center.x)]) / 32768.0
-    for y in range(lower.y, upper.y):
-        for x in range(lower.x, upper.x):
-            intensity = float(volume[lower.z,y,x]) / 32768.0
-            value = float(image[lower.z,y,x]) / 255.0
-            sigma = max(1.0 - ((x - center.x)**2 + (y - center.y)**2)**0.5 / (brush.size * 0.5), 0.0)
-            rho = max(1.0 - brush.delta_scaling * abs(intensity - midpoint), 0.0)**brush.sensitivity
-            alpha = sigma * rho
-            subimage[0,y,x] = (0.05 * alpha + (1.0 - 0.05 * alpha) * value) * 255.0
-    subimage = np.maximum(0.0, np.minimum(255.0, subimage)).astype(dtype=np.uint8)
-    image[lower.z:upper.z+1,:,:] = subimage
-    return subimage, (0, 0, lower.z)
+        return None
+    return apply_smartbrush_3d(image, volume, texcoord, brush, spacing)
 
 
 def rasterise_polygon(polygon, image, zoffset) -> np.array:

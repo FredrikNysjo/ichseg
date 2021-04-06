@@ -175,6 +175,7 @@ def do_rendering(ctx) -> None:
         k = glm.radians(ctx.settings.fov_degrees)
         proj = glm.ortho(-k * ctx.aspect, k * ctx.aspect, -k, k, 0.1, 10.0)
     view = glm.translate(glm.mat4(1.0), glm.vec3(0, 0, -2)) * glm.translate(glm.mat4(1.0), -ctx.panning.position) * glm.mat4_cast(ctx.trackball.quat)
+    spacing = glm.vec3(ctx.header["spacing"])
     extent = glm.vec3(ctx.header["spacing"]) * glm.vec3(ctx.header["dimensions"])
     model = glm.scale(glm.mat4(1.0), extent / glm.max(extent.x, glm.max(extent.y, extent.z)))
     mv = view * model;
@@ -213,6 +214,7 @@ def do_rendering(ctx) -> None:
     gl.glUniform1i(gl.glGetUniformLocation(program, "u_show_mpr"), ctx.mpr.enabled)
     gl.glUniform3f(gl.glGetUniformLocation(program, "u_mpr_planes"), *mpr_planes_snapped)
     gl.glUniform2f(gl.glGetUniformLocation(program, "u_level_range"), *mpr_level_range_normalized)
+    gl.glUniform3f(gl.glGetUniformLocation(program, "u_extent"), *extent)
     gl.glUniform4f(gl.glGetUniformLocation(program, "u_brush"), *ctx.brush.position)
     if ctx.smartbrush.enabled:
         gl.glUniform4f(gl.glGetUniformLocation(program, "u_brush"), *ctx.smartbrush.position)
@@ -249,14 +251,17 @@ def do_rendering(ctx) -> None:
         texcoord = glm.vec3(glm.inverse(mv) * glm.vec4(view_pos, 1.0)) + 0.5001
         ctx.brush.position = glm.vec4(texcoord - 0.5, ctx.brush.position.w)
         ctx.smartbrush.position = glm.vec4(texcoord - 0.5, ctx.smartbrush.position.w)
+
         if depth != 1.0 and ctx.brush.painting and ctx.brush.enabled:
             if ctx.brush.count == 0:
                 # Add full copy of current mask to command buffer to allow undo
                 cmd = UpdateVolumeCmd(ctx.mask, np.copy(ctx.mask), (0, 0, 0), ctx.textures["mask"])
                 ctx.cmds.append(cmd.apply())
             ctx.brush.count += 1
-            subimage, offset = apply_brush(ctx.mask, texcoord, ctx.brush)
-            update_subtexture_3d(ctx.textures["mask"], subimage, offset)
+            result = apply_brush(ctx.mask, texcoord, ctx.brush, spacing)
+            if result:
+                update_subtexture_3d(ctx.textures["mask"], result[0], result[1])
+
         if depth != 1.0 and ctx.smartbrush.painting and ctx.smartbrush.enabled:
             if ctx.smartbrush.count == 0:
                 cmd = UpdateVolumeCmd(ctx.mask, np.copy(ctx.mask), (0, 0, 0), ctx.textures["mask"])
@@ -266,13 +271,16 @@ def do_rendering(ctx) -> None:
                 ctx.smartbrush.momentum = min(5, ctx.smartbrush.momentum + 2);
                 ctx.smartbrush.xy = (x, y)
             if ctx.smartbrush.momentum > 0:
-                subimage, offset = apply_smartbrush(ctx.mask, ctx.volume, texcoord, ctx.smartbrush)
-                update_subtexture_3d(ctx.textures["mask"], subimage, offset)
+                result = apply_smartbrush(ctx.mask, ctx.volume, texcoord, ctx.smartbrush, spacing)
+                if result:
+                    update_subtexture_3d(ctx.textures["mask"], result[0], result[1])
                 ctx.smartbrush.momentum = max(0, ctx.smartbrush.momentum - 1)
+
         if depth != 1.0 and ctx.polygon.clicking and ctx.polygon.enabled:
             ctx.polygon.points.extend((texcoord.x - 0.5, texcoord.y - 0.5, texcoord.z - 0.5))
             update_mesh_buffer(ctx.buffers["polygon"], ctx.polygon.points)
             ctx.polygon.clicking = False
+
         if depth != 1.0 and ctx.livewire.enabled:
             d, h, w = ctx.volume.shape
             seed = int(texcoord.y * h) * w + int(texcoord.x * w)
@@ -355,13 +363,6 @@ def show_save_selection() -> str:
     return filepath
 
 
-def show_dir_selection() -> str:
-    root = tk.Tk()
-    root.withdraw()  # Hide Tk window
-    dirpath = tk.filedialog.askdirectory()
-    return dirpath
-
-
 def show_menubar(ctx) -> None:
     """ Show ImGui menu bar """
     imgui.begin_main_menu_bar()
@@ -375,7 +376,8 @@ def show_menubar(ctx) -> None:
                 update_texture_3d(ctx.textures["mask"], ctx.mask)
         if imgui.menu_item("Save segmentation...")[0]:
             filename = show_save_selection()
-            save_vtk(filename, ctx.mask, ctx.header)
+            if filename:
+                save_vtk(filename, ctx.mask, ctx.header)
         if imgui.menu_item("Quit")[0]:
             glfw.set_window_should_close(ctx.window, glfw.TRUE)
         imgui.end_menu()
@@ -411,6 +413,15 @@ def show_volume_stats(ctx) -> None:
     imgui.end()
 
 
+def disable_tools(ctx, selected_tool) -> None:
+    """ Disable all tools except the selected one """
+    ctx.polygon.enabled = False
+    ctx.brush.enabled = False
+    ctx.livewire.enabled = False
+    ctx.smartbrush.enabled = False
+    selected_tool.enabled = True
+
+
 def show_gui(ctx) -> None:
     """ Show ImGui windows """
     sf = imgui.get_io().font_global_scale
@@ -423,21 +434,28 @@ def show_gui(ctx) -> None:
     _, ctx.mpr.show_voxels = imgui.checkbox("Show voxels", ctx.mpr.show_voxels)
     _, ctx.mpr.level_range = imgui.drag_int2("HU levels", *ctx.mpr.level_range, 10, -1000, 3000)
     if imgui.collapsing_header("Tools", flags=imgui.TREE_NODE_DEFAULT_OPEN)[0]:
-        _, ctx.polygon.enabled = imgui.checkbox("Polygon tool enabled", ctx.polygon.enabled)
-        _, ctx.brush.enabled = imgui.checkbox("Brush tool enabled", ctx.brush.enabled)
+        clicked, ctx.polygon.enabled = imgui.checkbox("Polygon tool", ctx.polygon.enabled)
+        if clicked and ctx.polygon.enabled:
+            disable_tools(ctx, ctx.polygon)
+        clicked, ctx.brush.enabled = imgui.checkbox("Brush tool", ctx.brush.enabled)
+        if clicked and ctx.brush.enabled:
+            disable_tools(ctx, ctx.brush)
         if ctx.brush.enabled:
-            _, ctx.brush.size = imgui.slider_int("Brush size", ctx.brush.size, 1, 40)
-        _, ctx.livewire.enabled = imgui.checkbox("Livewire tool enabled", ctx.livewire.enabled)
-        _, ctx.smartbrush.enabled = imgui.checkbox("Smartbrush tool enabled", ctx.smartbrush.enabled)
+            _, ctx.brush.size = imgui.slider_int("Brush size", ctx.brush.size, 1, 80)
+        clicked, ctx.livewire.enabled = imgui.checkbox("Livewire tool", ctx.livewire.enabled)
+        if clicked and ctx.livewire.enabled:
+            disable_tools(ctx, ctx.livewire)
+        clicked, ctx.smartbrush.enabled = imgui.checkbox("Smartbrush tool", ctx.smartbrush.enabled)
+        if clicked and ctx.smartbrush.enabled:
+            disable_tools(ctx, ctx.smartbrush)
         if ctx.smartbrush.enabled:
-            _, ctx.smartbrush.size = imgui.slider_int("Brush size", ctx.smartbrush.size, 1, 40)
+            _, ctx.smartbrush.size = imgui.slider_int("Brush size", ctx.smartbrush.size, 1, 80)
             _, ctx.smartbrush.sensitivity = imgui.slider_float("Sensitivity", ctx.smartbrush.sensitivity, 0.0, 10.0)
             _, ctx.smartbrush.delta_scaling = imgui.slider_float("Delta scaling", ctx.smartbrush.delta_scaling, 1.0, 50.0)
     if imgui.collapsing_header("Misc")[0]:
         _, ctx.settings.bg_color1 = imgui.color_edit3("BG color 1", *ctx.settings.bg_color1)
         _, ctx.settings.bg_color2 = imgui.color_edit3("BG color 2", *ctx.settings.bg_color2)
         _, ctx.mpr.enabled = imgui.checkbox("Show MPR", ctx.mpr.enabled)
-        _, ctx.settings.projection_mode = imgui.checkbox("Orthographic view", ctx.settings.projection_mode)
     imgui.end()
     if ctx.settings.show_stats:
         show_volume_stats(ctx)
@@ -493,7 +511,7 @@ def mouse_button_callback(window, button, action, mods):
     x, y = glfw.get_cursor_pos(window)
     if button == glfw.MOUSE_BUTTON_RIGHT:
         ctx.trackball.center = glm.vec2(x, y)
-        ctx.trackball.tracking = (action == glfw.PRESS)
+        #ctx.trackball.tracking = (action == glfw.PRESS)
     if button == glfw.MOUSE_BUTTON_MIDDLE:
         ctx.panning.center = glm.vec2(x, y)
         ctx.panning.panning = (action == glfw.PRESS)

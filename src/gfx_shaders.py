@@ -28,10 +28,10 @@ raycast_fs = """
 
 uniform int u_label=0;
 uniform int u_show_mask=1;
-uniform int u_gamma_enabled=0;
 uniform int u_show_mpr=1;
 uniform vec3 u_mpr_planes=vec3(0.0);
 uniform vec2 u_level_range=vec2(0.0, 1.0);
+uniform vec3 u_extent=vec3(1.0);
 uniform vec4 u_brush;
 uniform mat4 u_mvp;
 uniform sampler3D u_volume;
@@ -58,10 +58,12 @@ vec3 hsv2rgb(float h, float s, float v)
 
 void main()
 {
+    ivec3 res = textureSize(u_volume, 0).xyz;
+
     vec3 ray_origin = v_ray_origin;
     vec3 ray_dir = normalize(v_ray_dir);
     vec3 ray_dir_inv = clamp(1.0 / ray_dir, -9999.0, 9999.0);
-    vec3 ray_step = 2.0 * ray_dir / vec3(textureSize(u_volume, 0).r);  // TODO
+    vec3 ray_step = 2.0 * ray_dir / res.xxx;  // FIXME
     float jitter = fract(dot(vec2(0.754877, 0.569840), gl_FragCoord.xy));
     float tmin, tmax;
     vec3 aabb[] = vec3[](vec3(-0.5), vec3(0.5));
@@ -74,8 +76,8 @@ void main()
                 continue;  // Avoid grazing intersections with plane
             float tmin_plane, tmax_plane;
             vec3 aabb_plane[] = vec3[](aabb[0], aabb[1]);
-            aabb_plane[0][i] = max(-0.5, min(0.5, u_mpr_planes[i] - 1e-4f));
-            aabb_plane[1][i] = max(-0.5, min(0.5, u_mpr_planes[i] + 1e-4f));
+            aabb_plane[0][i] = max(-0.5, min(0.5, u_mpr_planes[i] - 1e-4));
+            aabb_plane[1][i] = max(-0.5, min(0.5, u_mpr_planes[i] + 1e-4));
             if (intersectBox(ray_origin, ray_dir_inv, aabb_plane, tmin_plane, tmax_plane) && tmin_plane < tmin) {
                 tmin = tmin_plane;
                 tmax = tmax_plane;
@@ -85,6 +87,7 @@ void main()
         if (tmax <= tmin) discard;
     }
 
+    // Do ray marching (in both volumes)
     vec3 p = ray_origin;
     vec2 intensity = vec2(0.0);
     int nsteps = int(ceil((tmax - tmin) / length(ray_step)));
@@ -96,27 +99,35 @@ void main()
     if (bool(u_show_mpr))
         intensity[0] = max(0.0, intensity[0] - u_level_range[0]) / (u_level_range[1] - u_level_range[0]);
 
+    // Compute image gradient for mask volume
+    vec2 mask_grad;
+    mask_grad.x += step(0.5, texture(u_mask, p + dFdx(p) + 0.5).r);
+    mask_grad.x -= step(0.5, texture(u_mask, p - dFdx(p) + 0.5).r);
+    mask_grad.y += step(0.5, texture(u_mask, p + dFdy(p) + 0.5).r);
+    mask_grad.y -= step(0.5, texture(u_mask, p - dFdy(p) + 0.5).r);
+
+    vec4 output_color = vec4(intensity[0]);
+
+    // Draw segmentation mask
     vec3 label_color = hsv2rgb(fract(u_label * 0.618034), 0.5, 1.0);
+    if (bool(u_show_mask) && !bool(u_show_mpr)) {
+        output_color.rgb = max(output_color.rgb, label_color * intensity[1]);
+    }
+    if (bool(u_show_mask) && bool(u_show_mpr)) {
+        float outline = clamp(length(mask_grad), 0.0, 1.0);
+        outline *= 1.0 - step(0.05, max(length(dFdx(p)), length(dFdy(p))));
+        output_color.rgb = mix(output_color.rgb, label_color, mix(intensity[1], outline, 0.7));
+    }
 
-    vec2 grad;
-    grad.x = step(0.5, texture(u_mask, p + dFdx(p) + 0.5).r) - step(0.5, texture(u_mask, p - dFdx(p) + 0.5).r);
-    grad.y = step(0.5, texture(u_mask, p + dFdy(p) + 0.5).r) - step(0.5, texture(u_mask, p - dFdy(p) + 0.5).r);
-    float outline = clamp(length(grad), 0.0, 1.0);
-    if (max(length(dFdx(p)), length(dFdy(p))) > 0.05)
-        outline = 0.0;
+    // Draw brush shape (as white highlight)
+    if (length((u_brush.xyz - p) * u_extent / u_extent.x) < u_brush.w / res.x) {
+        output_color.rgb += vec3(0.15);
+    }
 
+    // Output fragment color and depth (the latter for picking)
+    rt_color = output_color;
     vec4 clip_pos = u_mvp * vec4(p, 1.0);
     gl_FragDepth = clamp((clip_pos.z / clip_pos.w) * 0.5 + 0.5, 0.0, 1.0);
-
-    rt_color = vec4(intensity[0]);
-    if (bool(u_show_mask) && !bool(u_show_mpr))
-        rt_color.rgb = max(rt_color.rgb, label_color * intensity[1]);
-    if (bool(u_show_mask) && bool(u_show_mpr))
-        rt_color.rgb = mix(rt_color.rgb, label_color, mix(intensity[1], outline, 0.7));
-    if (length(u_brush.xyz - p) < u_brush.w * 0.002)
-        rt_color.rgb += 0.15;
-    if (bool(u_gamma_enabled))
-        rt_color.rgb = pow(rt_color.rgb, vec3(1.0 / 2.2));
 }
 """
 

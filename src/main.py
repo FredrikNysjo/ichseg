@@ -292,10 +292,13 @@ def do_rendering(ctx) -> None:
             clicking = False
             if ctx.livewire.clicking:
                 if not len(ctx.livewire.path):
-                    slice_ = ctx.volume[int(texcoord.z * d),:,:].copy()
-                    slice_ = np.maximum(0.25, np.minimum(0.27929, slice_.astype(np.float32) * (1.0 / 2**15)))
-                    ctx.livewire.graph = create_graph_from_image(slice_)
-                    update_edge_weights(ctx.livewire.graph, slice_, 0.0, 1.0)
+                    shift = level_range[0]
+                    scale = 1.0 / max(1e-9, level_range[1] - level_range[0])
+                    slice_ = ctx.volume[int(texcoord.z * d),:,:].astype(np.float32)
+                    slice_normalized = np.maximum(0.0, np.minimum(1.0, (slice_ - shift) * scale))
+
+                    ctx.livewire.graph = create_graph_from_image(slice_normalized)
+                    update_edge_weights(ctx.livewire.graph, slice_normalized, 0.0, 1.0)
                     ctx.livewire.dist, ctx.livewire.pred = compute_dijkstra(ctx.livewire.graph, seed)
                     ctx.livewire.path.append(seed)
                 ctx.livewire.clicking = False
@@ -437,7 +440,7 @@ def show_gui(ctx) -> None:
     _, ctx.label = imgui.combo("Class", ctx.label, ctx.classes)
     _, ctx.settings.show_mask = imgui.checkbox("Show segmentation", ctx.settings.show_mask)
     _, ctx.mpr.show_voxels = imgui.checkbox("Show voxels", ctx.mpr.show_voxels)
-    _, ctx.mpr.level_range = imgui.drag_int2("HU levels", *ctx.mpr.level_range, 10, -1000, 3000)
+    _, ctx.mpr.level_range = imgui.drag_int2("Level range", *ctx.mpr.level_range, 10, -1000, 3000)
     if imgui.collapsing_header("Tools", flags=imgui.TREE_NODE_DEFAULT_OPEN)[0]:
         clicked, ctx.polygon.enabled = imgui.checkbox("Polygon tool", ctx.polygon.enabled)
         if clicked and ctx.polygon.enabled:

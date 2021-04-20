@@ -34,8 +34,6 @@ def load_dicom(filename, normalize_scalars=False) -> Tuple[np.array, Dict]:
         for i in range(0, len(slices)):
             volume[i,:,:] = slices[i].pixel_array
             volume[i,:,:] += np.int16(slices[i].RescaleIntercept)
-        if normalize_scalars:
-            volume = (volume + 1024) * 8
     else:
         assert(0)
     return volume, header

@@ -40,7 +40,7 @@ class SmartBrushTool:
         self.position = glm.vec4(0.0)
         self.size = 30
         self.sensitivity = 5.0
-        self.delta_scaling = 50.0
+        self.delta_scaling = 1.0
         self.enabled = False
         self.painting = False
         self.momentum = 0
@@ -77,7 +77,7 @@ def apply_brush(image, texcoord, brush, spacing):
     return apply_brush_3d(image, texcoord, brush, spacing)
 
 
-def apply_smartbrush_3d(image, volume, texcoord, brush, spacing):
+def apply_smartbrush_3d(image, volume, texcoord, brush, spacing, level_range):
     """ Apply smart brush to image, using the method from SmartPaint.
 
         Reference: F. Malmberg et al., "SmartPaint: a tool for
@@ -96,10 +96,14 @@ def apply_smartbrush_3d(image, volume, texcoord, brush, spacing):
     z, x, y = np.meshgrid(zz, yy, xx, indexing='ij')
     z *= spacing.z / spacing.x;  # Need to take slice spacing into account
 
+    shift = level_range[0]
+    scale = 1.0 / (level_range[1] - level_range[0])
     subimage = image[lower.z:upper.z,lower.y:upper.y,lower.x:upper.x].astype(dtype=np.float32)
-    midpoint = volume[int(center.z),int(center.y),int(center.x)] / 32768.0
+    midpoint = volume[int(center.z),int(center.y),int(center.x)]
+    midpoint = (midpoint - shift) * scale
     intensity = volume[lower.z:upper.z,lower.y:upper.y,lower.x:upper.x].astype(dtype=np.float32)
-    intensity *= (1.0 / 32768.0)
+    intensity -= shift
+    intensity *= scale
 
     value = subimage * (1.0 / 255.0)
     sigma = np.maximum(0.0, 1.0 - (x**2 + y**2 + z**2)**0.5 / (brush.size * 0.5))
@@ -113,7 +117,7 @@ def apply_smartbrush_3d(image, volume, texcoord, brush, spacing):
     return subimage, lower
 
 
-def apply_smartbrush(image, volume, texcoord, brush, spacing):
+def apply_smartbrush(image, volume, texcoord, brush, spacing, level_range=None):
     """ Apply smart brush to image, using the method from SmartPaint.
 
         Reference: F. Malmberg et al., "SmartPaint: a tool for
@@ -121,7 +125,7 @@ def apply_smartbrush(image, volume, texcoord, brush, spacing):
     """
     if abs(texcoord.x - 0.5) > 0.5 or abs(texcoord.y - 0.5) > 0.5 or abs(texcoord.z - 0.5) > 0.5:
         return None
-    return apply_smartbrush_3d(image, volume, texcoord, brush, spacing)
+    return apply_smartbrush_3d(image, volume, texcoord, brush, spacing, level_range)
 
 
 def rasterise_polygon(polygon, image, zoffset) -> np.array:

@@ -109,12 +109,16 @@ def create_texture_3d(image, filter_mode=gl.GL_LINEAR):
     gl.glTexParameteri(gl.GL_TEXTURE_3D, gl.GL_TEXTURE_WRAP_R, gl.GL_CLAMP_TO_BORDER)
     gl.glTexParameteri(gl.GL_TEXTURE_3D, gl.GL_TEXTURE_MIN_FILTER, filter_mode)
     gl.glTexParameteri(gl.GL_TEXTURE_3D, gl.GL_TEXTURE_MAG_FILTER, filter_mode)
-    gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 1);
+    gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 1)
     if image.dtype == np.uint8:
         gl.glTexImage3D(gl.GL_TEXTURE_3D, 0, gl.GL_R8, w, h, d, 0, gl.GL_RED, gl.GL_UNSIGNED_BYTE, image)
     elif image.dtype == np.int16:
         gl.glTexImage3D(gl.GL_TEXTURE_3D, 0, gl.GL_R16_SNORM, w, h, d, 0, gl.GL_RED, gl.GL_SHORT, image)
-    gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 4);
+    elif image.dtype == np.float32:
+        gl.glTexImage3D(gl.GL_TEXTURE_3D, 0, gl.GL_R32F, w, h, d, 0, gl.GL_RED, gl.GL_FLOAT, image)
+    else:
+        assert False, "Image type not supported: " + image.dtype.name
+    gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 4)
     gl.glBindTexture(gl.GL_TEXTURE_3D, 0)
     return texture
 
@@ -123,12 +127,16 @@ def update_texture_3d(texture, image):
     """ Update 3D texture data from volume image """
     d, h, w = image.shape[0:3]
     gl.glBindTexture(gl.GL_TEXTURE_3D, texture)
-    gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 1);
+    gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 1)
     if image.dtype == np.uint8:
         gl.glTexImage3D(gl.GL_TEXTURE_3D, 0, gl.GL_R8, w, h, d, 0, gl.GL_RED, gl.GL_UNSIGNED_BYTE, image)
     elif image.dtype == np.int16:
         gl.glTexImage3D(gl.GL_TEXTURE_3D, 0, gl.GL_R16_SNORM, w, h, d, 0, gl.GL_RED, gl.GL_SHORT, image)
-    gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 4);
+    elif image.dtype == np.float32:
+        gl.glTexImage3D(gl.GL_TEXTURE_3D, 0, gl.GL_R32F, w, h, d, 0, gl.GL_RED, gl.GL_FLOAT, image)
+    else:
+        assert False, "Image type not supported: " + image.dtype.name
+    gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 4)
     gl.glBindTexture(gl.GL_TEXTURE_3D, 0)
 
 
@@ -139,12 +147,16 @@ def update_subtexture_3d(texture, subimage, offset):
     x, y, z = offset
     d, h, w = subimage.shape
     gl.glBindTexture(gl.GL_TEXTURE_3D, texture)
-    gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 1);
+    gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 1)
     if subimage.dtype == np.uint8:
         gl.glTexSubImage3D(gl.GL_TEXTURE_3D, 0, x, y, z, w, h, d, gl.GL_RED, gl.GL_UNSIGNED_BYTE, subimage)
     elif subimage.dtype == np.int16:
         gl.glTexSubImage3D(gl.GL_TEXTURE_3D, 0, x, y, z, w, h, d, gl.GL_RED, gl.GL_SHORT, subimage)
-    gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 4);
+    elif subimage.dtype == np.float32:
+        gl.glTexSubImage3D(gl.GL_TEXTURE_3D, 0, x, y, z, w, h, d, gl.GL_RED, gl.GL_FLOAT, subimage)
+    else:
+        assert False, "Image type not supported: " + image.dtype.name
+    gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 4)
     gl.glBindTexture(gl.GL_TEXTURE_3D, 0)
 
 

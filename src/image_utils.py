@@ -37,10 +37,13 @@ def load_vtk(filename, normalize_scalars=False) -> Tuple[np.array, Dict]:
                 elif header["format"] == "short":
                     dt = np.dtype(np.int16).newbyteorder(">")
                     volume = np.frombuffer(stream.read(), dtype=dt).reshape(dim)
-                    if normalize_scalars:
-                        volume = (volume + 1024) * 8
+                    volume = volume.astype(dtype=np.int16)  # Reorder bytes
+                elif header["format"] == "float":
+                    dt = np.dtype(np.float32).newbyteorder(">")
+                    volume = np.frombuffer(stream.read(), dtype=dt).reshape(dim)
+                    volume = volume.astype(dtype=np.float32)  # Reorder bytes
                 else:
-                    assert(0)
+                    assert False, "Scalar type not supported: " + header["format"]
                 break
             line = stream.readline()
     return volume, header

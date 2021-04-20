@@ -166,8 +166,13 @@ def do_initialize(ctx) -> None:
 
 def do_rendering(ctx) -> None:
     """ Do rendering """
-    mpr_planes_snapped = snap_mpr_to_grid(ctx.volume, ctx.mpr.planes)  # TODO
-    mpr_level_range_normalized = [(x + 1024.0) / 4096.0 for x in ctx.mpr.level_range]
+    mpr_planes_snapped = snap_mpr_to_grid(ctx.volume, ctx.mpr.planes)
+    level_range = ctx.mpr.level_range
+    level_range_scaled = level_range  # Adjusted for normalized texture formats
+    if ctx.volume.dtype == np.uint8:
+        level_range_scaled = [v / 255.0 for v in level_range]  # Scale to range [0,1]
+    if ctx.volume.dtype == np.int16:
+        level_range_scaled = [v / 32767.0 for v in level_range]  # Scale to range [-1,1]
     filter_mode = gl.GL_NEAREST if ctx.mpr.show_voxels else gl.GL_LINEAR;
 
     proj = glm.perspective(glm.radians(ctx.settings.fov_degrees), ctx.aspect, 0.1, 10.0)
@@ -213,7 +218,7 @@ def do_rendering(ctx) -> None:
     gl.glUniform1i(gl.glGetUniformLocation(program, "u_projection_mode"), ctx.settings.projection_mode)
     gl.glUniform1i(gl.glGetUniformLocation(program, "u_show_mpr"), ctx.mpr.enabled)
     gl.glUniform3f(gl.glGetUniformLocation(program, "u_mpr_planes"), *mpr_planes_snapped)
-    gl.glUniform2f(gl.glGetUniformLocation(program, "u_level_range"), *mpr_level_range_normalized)
+    gl.glUniform2f(gl.glGetUniformLocation(program, "u_level_range"), *level_range_scaled)
     gl.glUniform3f(gl.glGetUniformLocation(program, "u_extent"), *extent)
     gl.glUniform4f(gl.glGetUniformLocation(program, "u_brush"), *ctx.brush.position)
     if ctx.smartbrush.enabled:
@@ -271,7 +276,7 @@ def do_rendering(ctx) -> None:
                 ctx.smartbrush.momentum = min(5, ctx.smartbrush.momentum + 2);
                 ctx.smartbrush.xy = (x, y)
             if ctx.smartbrush.momentum > 0:
-                result = apply_smartbrush(ctx.mask, ctx.volume, texcoord, ctx.smartbrush, spacing)
+                result = apply_smartbrush(ctx.mask, ctx.volume, texcoord, ctx.smartbrush, spacing, level_range)
                 if result:
                     update_subtexture_3d(ctx.textures["mask"], result[0], result[1])
                 ctx.smartbrush.momentum = max(0, ctx.smartbrush.momentum - 1)
@@ -451,7 +456,7 @@ def show_gui(ctx) -> None:
         if ctx.smartbrush.enabled:
             _, ctx.smartbrush.size = imgui.slider_int("Brush size", ctx.smartbrush.size, 1, 80)
             _, ctx.smartbrush.sensitivity = imgui.slider_float("Sensitivity", ctx.smartbrush.sensitivity, 0.0, 10.0)
-            _, ctx.smartbrush.delta_scaling = imgui.slider_float("Delta scaling", ctx.smartbrush.delta_scaling, 1.0, 50.0)
+            _, ctx.smartbrush.delta_scaling = imgui.slider_float("Delta scaling", ctx.smartbrush.delta_scaling, 1.0, 5.0)
     if imgui.collapsing_header("Misc")[0]:
         _, ctx.settings.bg_color1 = imgui.color_edit3("BG color 1", *ctx.settings.bg_color1)
         _, ctx.settings.bg_color2 = imgui.color_edit3("BG color 2", *ctx.settings.bg_color2)

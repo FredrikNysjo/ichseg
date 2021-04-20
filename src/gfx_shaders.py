@@ -89,7 +89,7 @@ void main()
 
     // Do ray marching (in both volumes)
     vec3 p = ray_origin;
-    vec2 intensity = vec2(0.0);
+    vec2 intensity = vec2(-999999.0);
     int nsteps = int(ceil((tmax - tmin) / length(ray_step)));
     for (int i = 0; i < min(MAX_STEPS, nsteps); ++i) {
         p = ray_origin + ray_step * (i + jitter);

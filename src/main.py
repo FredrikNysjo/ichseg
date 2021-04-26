@@ -433,18 +433,22 @@ def show_gui(ctx) -> None:
     _, ctx.mpr.show_voxels = imgui.checkbox("Show voxels", ctx.mpr.show_voxels)
     _, ctx.mpr.level_range = imgui.drag_int2("Level range", *ctx.mpr.level_range, 10, -1000, 3000)
     if imgui.collapsing_header("Tools", flags=imgui.TREE_NODE_DEFAULT_OPEN)[0]:
+        # Polygon tool settings
         clicked, tools.polygon.enabled = imgui.checkbox("Polygon tool", tools.polygon.enabled)
         if clicked and tools.polygon.enabled:
             tools_disable_all_except(tools, tools.polygon)
+        # Brush tool settings
         clicked, tools.brush.enabled = imgui.checkbox("Brush tool", tools.brush.enabled)
         if clicked and tools.brush.enabled:
             tools_disable_all_except(tools, tools.brush)
         if tools.brush.enabled:
             _, tools.brush.mode = imgui.combo("Mode", tools.brush.mode, ["2D", "3D"])
             _, tools.brush.size = imgui.slider_int("Brush size", tools.brush.size, 1, 80)
+        # Livewire tool settings
         clicked, tools.livewire.enabled = imgui.checkbox("Livewire tool", tools.livewire.enabled)
         if clicked and tools.livewire.enabled:
             tools_disable_all_except(tools, tools.livewire)
+        # Smart brush tool settings
         clicked, tools.smartbrush.enabled = imgui.checkbox("Smartbrush tool", tools.smartbrush.enabled)
         if clicked and tools.smartbrush.enabled:
             tools_disable_all_except(tools, tools.smartbrush)
@@ -455,6 +459,10 @@ def show_gui(ctx) -> None:
                 "Sensitivity", tools.smartbrush.sensitivity, 0.0, 10.0)
             _, tools.smartbrush.delta_scaling = imgui.slider_float(
                 "Delta scaling", tools.smartbrush.delta_scaling, 1.0, 5.0)
+        # Seed painting tool settings
+        clicked, tools.seedpaint.enabled = imgui.checkbox("Seed paint tool", tools.seedpaint.enabled)
+        if clicked and tools.seedpaint.enabled:
+            tools_disable_all_except(tools, tools.seedpaint)
     if imgui.collapsing_header("Misc")[0]:
         _, ctx.settings.bg_color1 = imgui.color_edit3("BG color 1", *ctx.settings.bg_color1)
         _, ctx.settings.bg_color2 = imgui.color_edit3("BG color 2", *ctx.settings.bg_color2)

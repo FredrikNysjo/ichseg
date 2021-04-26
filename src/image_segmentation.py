@@ -62,12 +62,19 @@ class SmartBrushTool:
         self.plane = MPR_PLANE_Z
 
 
+class SeedPaintTool:
+    def __init__(self):
+        self.enabled = False
+        self.plane = MPR_PLANE_Z
+
+
 class ToolManager:
     def __init__(self):
         self.brush = BrushTool()
         self.polygon = PolygonTool()
         self.livewire = LivewireTool()
         self.smartbrush = SmartBrushTool()
+        self.seedpaint = SeedPaintTool()
 
 
 def tools_disable_all_except(tools, selected) -> None:
@@ -76,6 +83,7 @@ def tools_disable_all_except(tools, selected) -> None:
     tools.brush.enabled = False
     tools.livewire.enabled = False
     tools.smartbrush.enabled = False
+    tools.seedpaint.enabled = False
     selected.enabled = True
     tools_cancel_drawing_all(tools)
 
@@ -97,6 +105,7 @@ def tools_set_plane_all(tools, axis) -> None:
     tools.brush.plane = axis
     tools.livewire.plane = axis
     tools.smartbrush.plane = axis
+    tools.seedpaint.plane = axis
     tools_cancel_drawing_all(tools)
 
 

@@ -39,7 +39,7 @@ class UpdateVolumeCmd:
 
     def apply(self):
         x, y, z = self.offset
-        d, w, h = self.subimage.shape
+        d, h, w = self.subimage.shape
         self._prev_subimage = np.copy(self.volume[z:z+d,y:y+h,x:x+w])
         self.volume[z:z+d,y:y+h,x:x+w] = self.subimage
         if self.texture:
@@ -48,7 +48,7 @@ class UpdateVolumeCmd:
 
     def undo(self):
         x, y, z = self.offset
-        d, w, h = self.subimage.shape
+        d, h, w = self.subimage.shape
         self.volume[z:z+d,y:y+h,x:x+w] = self._prev_subimage
         if self.texture:
             update_subtexture_3d(self.texture, self._prev_subimage, self.offset)
@@ -233,17 +233,21 @@ def do_rendering(ctx) -> None:
         program = ctx.programs["polygon"]
         gl.glUseProgram(program)
         gl.glUniformMatrix4fv(gl.glGetUniformLocation(program, "u_mvp"), 1, False, glm.value_ptr(mvp))
+        gl.glDisable(gl.GL_DEPTH_TEST)
         gl.glBindVertexArray(ctx.vaos["polygon"])
         gl.glDrawArrays(gl.GL_LINE_STRIP, 0, len(ctx.polygon.points) // 3)
         gl.glBindVertexArray(0)
+        gl.glEnable(gl.GL_DEPTH_TEST)
 
     if ctx.livewire.enabled:
         program = ctx.programs["polygon"]
         gl.glUseProgram(program)
         gl.glUniformMatrix4fv(gl.glGetUniformLocation(program, "u_mvp"), 1, False, glm.value_ptr(mvp))
+        gl.glDisable(gl.GL_DEPTH_TEST)
         gl.glBindVertexArray(ctx.vaos["polygon"])
         gl.glDrawArrays(gl.GL_LINE_STRIP, 0, len(ctx.livewire.points) // 3)
         gl.glBindVertexArray(0)
+        gl.glEnable(gl.GL_DEPTH_TEST)
 
     if ctx.mpr.enabled:
         x, y = glfw.get_cursor_pos(ctx.window)
@@ -321,18 +325,12 @@ def do_update(ctx) -> None:
     ctx.smartbrush.position.w = 0.0 if not ctx.smartbrush.enabled else ctx.smartbrush.size * 0.5
 
     if ctx.polygon.rasterise and len(ctx.polygon.points):
-        npoints = len(ctx.polygon.points) // 3
-        polygon = np.zeros((npoints + 1, 2))
-        for i in range(0, npoints):
-            polygon[i, 0] = ctx.polygon.points[3 * i + 0] + 0.5
-            polygon[i, 1] = ctx.polygon.points[3 * i + 1] + 0.5
-        polygon[npoints, 0] = ctx.polygon.points[0] + 0.5
-        polygon[npoints, 1] = ctx.polygon.points[1] + 0.5
-        zoffset = int((ctx.polygon.points[2] + 0.5) * ctx.mask.shape[0])
-        image = rasterise_polygon(polygon, ctx.mask, zoffset)
-        image |= ctx.mask[zoffset,:,:]
-        cmd = UpdateVolumeCmd(ctx.mask, image, (0, 0, zoffset), ctx.textures["mask"])
-        ctx.cmds.append(cmd.apply())
+        # Rasterise polygon into mask image
+        result = polygon_tool_apply(ctx.polygon, ctx.mask)
+        if result:
+            cmd = UpdateVolumeCmd(ctx.mask, result[0], result[1], ctx.textures["mask"])
+            ctx.cmds.append(cmd.apply())
+        # Clean up for drawing next polygon
         ctx.polygon.points = []
         ctx.polygon.rasterise = False
 

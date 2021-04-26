@@ -30,6 +30,7 @@ class PolygonTool:
         self.enabled = False
         self.rasterise = False
         self.clicking = False
+        self.plane = MPR_PLANE_Z
 
 
 class LivewireTool:
@@ -43,6 +44,7 @@ class LivewireTool:
         self.enabled = False
         self.rasterise = False
         self.clicking = False
+        self.plane = MPR_PLANE_Z
 
 
 class SmartBrushTool:
@@ -146,14 +148,14 @@ def apply_smartbrush(image, volume, texcoord, brush, spacing, level_range=None):
     return apply_smartbrush_3d(image, volume, texcoord, brush, spacing, level_range)
 
 
-def rasterise_polygon(polygon, image, zoffset) -> np.array:
+def rasterise_polygon_2d(polygon, image) -> np.array:
     """ Rasterise closed 2D polygon using fast XOR-based method """
-    d, h, w = image.shape
+    h, w = image.shape
     xmin = int(np.floor(np.min(polygon[:,0]) * w))
     xmax = int(np.ceil(np.max(polygon[:,0]) * w))
     ymin = int(np.floor(np.min(polygon[:,1]) * h))
     ymax = int(np.ceil(np.max(polygon[:,1]) * h))
-    output = np.zeros((1, h, w), dtype=np.uint8)
+    output = np.zeros((h, w), dtype=np.uint8)
     nvertices = polygon.shape[0]
     for y in range(ymin, ymax):
         for i in range(0, nvertices - 1):
@@ -165,9 +167,54 @@ def rasterise_polygon(polygon, image, zoffset) -> np.array:
             t = ((y + 0.5) - v0[1]) / delta[1] if delta[1] else 0.0
             if t > 0.0 and t < 1.0:
                 x = v0[0] + t * delta[0]
-                output[0,int(y + 0.5),0:min(int(x + 0.5),w)] ^= 255
-                output[0,int(y + 0.5),min(int(x + 0.5),w):w] ^= 0
+                output[int(y + 0.5), 0:min(int(x + 0.5),w)] ^= 255
+                output[int(y + 0.5), min(int(x + 0.5),w):w] ^= 0
     return output
+
+
+def polygon_tool_apply(tool, image):
+    """ Apply polygon tool to 2D slice of input 3D image
+
+    Returns result (subimage, offset) if successfull, otherwise None
+    """
+    if len(tool.points) == 0:
+        return None
+
+    # Extract image slice for current drawing plane
+    d, h, w = image.shape
+    if tool.plane == MPR_PLANE_Z:
+        offset = (0, 0, int((tool.points[2] + 0.5) * d))
+        slice_ = image[offset[2],:,:].astype(dtype=np.uint8)
+        axes = (0, 1, 2)
+        output_shape = (1, h, w)
+    elif tool.plane == MPR_PLANE_Y:
+        offset = (0, int((tool.points[1] + 0.5) * h), 0)
+        slice_ = image[:,offset[1],:].astype(dtype=np.uint8)
+        axes = (0, 2, 1)
+        output_shape = (d, 1, w)
+    elif tool.plane == MPR_PLANE_X:
+        offset = (int((tool.points[0] + 0.5) * w), 0, 0)
+        slice_ = image[:,:,offset[0]].astype(dtype=np.uint8)
+        axes = (1, 2, 0)
+        output_shape = (d, h, 1)
+    else:
+        assert False, "Invalid MPR plane index"
+
+    # Construct closed 2D polygon from drawn 3D points
+    npoints = len(tool.points) // 3
+    polygon = np.zeros((npoints + 1, 2))
+    for i in range(0, npoints):
+        polygon[i, 0] = tool.points[3 * i + axes[0]] + 0.5
+        polygon[i, 1] = tool.points[3 * i + axes[1]] + 0.5
+    polygon[npoints, 0] = tool.points[axes[0]] + 0.5
+    polygon[npoints, 1] = tool.points[axes[1]] + 0.5
+
+    # Rasterise 2D polygon into image slice
+    subimage = rasterise_polygon_2d(polygon, slice_)
+    subimage |= slice_                         # Merge with previous result
+    subimage = subimage.reshape(output_shape)  # Final result must be a volume
+
+    return subimage, offset
 
 
 def create_graph_from_image(image):

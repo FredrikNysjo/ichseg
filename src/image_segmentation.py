@@ -139,7 +139,8 @@ def _brush_tool_apply(tool, image, texcoord, spacing):
     subimage = (tool.size*0.5 - (x**2 + y**2 + z**2)**0.5 + 0.5) * 255.99
     subimage = np.maximum(0, np.minimum(255, subimage)).astype(dtype=np.uint8)
 
-    image[lower.z:upper.z,lower.y:upper.y,lower.x:upper.x] |= subimage
+    image[lower.z:upper.z,lower.y:upper.y,lower.x:upper.x] = np.maximum(
+        image[lower.z:upper.z,lower.y:upper.y,lower.x:upper.x], subimage)
     subimage = image[lower.z:upper.z,lower.y:upper.y,lower.x:upper.x]
     return subimage, lower
 

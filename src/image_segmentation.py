@@ -5,6 +5,14 @@ import scipy.sparse.csgraph
 import scipy.ndimage
 import glm
 
+
+MPR_PLANE_X = 0
+MPR_PLANE_Y = 1
+MPR_PLANE_Z = 2
+TOOL_MODE_2D = 0
+TOOL_MODE_3D = 1
+
+
 class BrushTool:
     def __init__(self):
         self.position = glm.vec4(0.0)
@@ -12,6 +20,8 @@ class BrushTool:
         self.enabled = False
         self.painting = False
         self.count = 0
+        self.mode = TOOL_MODE_3D
+        self.plane = MPR_PLANE_Z
 
 
 class PolygonTool:
@@ -46,14 +56,19 @@ class SmartBrushTool:
         self.momentum = 0
         self.xy = (0, 0)
         self.count = 0
+        self.mode = TOOL_MODE_3D
+        self.plane = MPR_PLANE_Z
 
 
 def apply_brush_3d(image, texcoord, brush, spacing):
     """ Apply brush to image """
     d, h, w = image.shape[0:3]
     center = texcoord * glm.vec3(w, h, d)
-    lower = center - glm.vec3(brush.size * (spacing.x / spacing)) * 0.5 - 0.5
-    upper = center + glm.vec3(brush.size * (spacing.x / spacing)) * 0.5 + 0.5
+    radius = glm.vec3(brush.size)
+    if brush.mode == TOOL_MODE_2D:
+        radius[brush.plane] = 1  # Restrict brush to 2D plane
+    lower = center - glm.vec3(radius * (spacing.x / spacing)) * 0.5 + 0.5
+    upper = center + glm.vec3(radius * (spacing.x / spacing)) * 0.5 + 0.5
     lower = glm.ivec3(glm.clamp(lower, glm.vec3(0.0), glm.vec3(w - 1, h - 1, d - 1)))
     upper = glm.ivec3(glm.clamp(upper, glm.vec3(0.0), glm.vec3(w - 1, h - 1, d - 1)))
 
@@ -85,8 +100,11 @@ def apply_smartbrush_3d(image, volume, texcoord, brush, spacing, level_range):
     """
     d, h, w = image.shape[0:3]
     center = texcoord * glm.vec3(w, h, d)
-    lower = center - glm.vec3(brush.size * (spacing.x / spacing)) * 0.5 - 0.5
-    upper = center + glm.vec3(brush.size * (spacing.x / spacing)) * 0.5 + 0.5
+    radius = glm.vec3(brush.size)
+    if brush.mode == TOOL_MODE_2D:
+        radius[brush.plane] = 1  # Restrict brush to 2D plane
+    lower = center - glm.vec3(radius * (spacing.x / spacing)) * 0.5 + 0.5
+    upper = center + glm.vec3(radius * (spacing.x / spacing)) * 0.5 + 0.5
     lower = glm.ivec3(glm.clamp(lower, glm.vec3(1.0), glm.vec3(w - 2, h - 2, d - 2)))
     upper = glm.ivec3(glm.clamp(upper, glm.vec3(1.0), glm.vec3(w - 2, h - 2, d - 2)))
 

@@ -421,13 +421,34 @@ def show_volume_stats(ctx) -> None:
     imgui.end()
 
 
-def disable_tools(ctx, selected_tool) -> None:
+def tools_disable_all(ctx, selected_tool) -> None:
     """ Disable all tools except the selected one """
     ctx.polygon.enabled = False
     ctx.brush.enabled = False
     ctx.livewire.enabled = False
     ctx.smartbrush.enabled = False
     selected_tool.enabled = True
+    tools_cancel_drawing_all(ctx)
+
+
+def tools_cancel_drawing_all(ctx) -> None:
+    """ Cancel drawing for all tools """
+    ctx.polygon.points = []
+    ctx.livewire.path = []
+    ctx.livewire.points = []
+
+
+def tools_set_plane_all(ctx, axis) -> None:
+    """ Set the active drawing plane for all tools
+
+    This also cancels all drawing, to prevent the user from
+    continue a polygon or livewire on another plane.
+    """
+    ctx.polygon.plane = axis
+    ctx.brush.plane = axis
+    ctx.livewire.plane = axis
+    ctx.smartbrush.plane = axis
+    tools_cancel_drawing_all(ctx)
 
 
 def show_gui(ctx) -> None:
@@ -444,19 +465,21 @@ def show_gui(ctx) -> None:
     if imgui.collapsing_header("Tools", flags=imgui.TREE_NODE_DEFAULT_OPEN)[0]:
         clicked, ctx.polygon.enabled = imgui.checkbox("Polygon tool", ctx.polygon.enabled)
         if clicked and ctx.polygon.enabled:
-            disable_tools(ctx, ctx.polygon)
+            tools_disable_all(ctx, ctx.polygon)
         clicked, ctx.brush.enabled = imgui.checkbox("Brush tool", ctx.brush.enabled)
         if clicked and ctx.brush.enabled:
-            disable_tools(ctx, ctx.brush)
+            tools_disable_all(ctx, ctx.brush)
         if ctx.brush.enabled:
+            _, ctx.brush.mode = imgui.combo("Mode", ctx.brush.mode, ["2D", "3D"])
             _, ctx.brush.size = imgui.slider_int("Brush size", ctx.brush.size, 1, 80)
         clicked, ctx.livewire.enabled = imgui.checkbox("Livewire tool", ctx.livewire.enabled)
         if clicked and ctx.livewire.enabled:
-            disable_tools(ctx, ctx.livewire)
+            tools_disable_all(ctx, ctx.livewire)
         clicked, ctx.smartbrush.enabled = imgui.checkbox("Smartbrush tool", ctx.smartbrush.enabled)
         if clicked and ctx.smartbrush.enabled:
-            disable_tools(ctx, ctx.smartbrush)
+            tools_disable_all(ctx, ctx.smartbrush)
         if ctx.smartbrush.enabled:
+            _, ctx.smartbrush.mode = imgui.combo("Mode", ctx.smartbrush.mode, ["2D", "3D"])
             _, ctx.smartbrush.size = imgui.slider_int("Brush size", ctx.smartbrush.size, 1, 80)
             _, ctx.smartbrush.sensitivity = imgui.slider_float("Sensitivity", ctx.smartbrush.sensitivity, 0.0, 10.0)
             _, ctx.smartbrush.delta_scaling = imgui.slider_float("Delta scaling", ctx.smartbrush.delta_scaling, 1.0, 5.0)
@@ -487,11 +510,14 @@ def key_callback(window, key, scancode, action, mods):
         # case as well
         ctx.mpr.scrolling = (action == glfw.PRESS or action == glfw.REPEAT)
     if key == glfw.KEY_1:  # Show top-view
-        ctx.trackball.quat = glm.quat(glm.vec3(0, 0, 0))
+        ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(0, 0, 0)))
+        tools_set_plane_all(ctx, MPR_PLANE_Z)
     if key == glfw.KEY_2:  # Show side-view
-        ctx.trackball.quat = glm.quat(glm.vec3(glm.radians(-90), glm.radians(90), 0))
+        ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(-90, 90, 0)))
+        tools_set_plane_all(ctx, MPR_PLANE_X)
     if key == glfw.KEY_3:  # Show front-view
-        ctx.trackball.quat = glm.quat(glm.vec3(glm.radians(-90), glm.radians(180), 0))
+        ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(-90, 180, 0)))
+        tools_set_plane_all(ctx, MPR_PLANE_Y)
     if key == glfw.KEY_S and (action == glfw.PRESS):
         ctx.livewire.smoothing = not ctx.livewire.smoothing
     if key == glfw.KEY_SPACE and action == glfw.PRESS:
@@ -502,9 +528,7 @@ def key_callback(window, key, scancode, action, mods):
         ctx.polygon.rasterise = (action == glfw.PRESS)
         ctx.livewire.rasterise = (action == glfw.PRESS)
     if key == glfw.KEY_ESCAPE:  # Cancel polygon or livewire
-        ctx.polygon.points = []
-        ctx.livewire.path = []
-        ctx.livewire.points = []
+        tools_cancel_drawing_all(ctx)
     if key == glfw.KEY_Z and (mods & glfw.MOD_CONTROL):
         if action == glfw.PRESS and len(ctx.cmds):
             ctx.cmds.pop().undo()

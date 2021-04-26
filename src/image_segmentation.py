@@ -62,6 +62,44 @@ class SmartBrushTool:
         self.plane = MPR_PLANE_Z
 
 
+class ToolManager:
+    def __init__(self):
+        self.brush = BrushTool()
+        self.polygon = PolygonTool()
+        self.livewire = LivewireTool()
+        self.smartbrush = SmartBrushTool()
+
+
+def tools_disable_all_except(tools, selected) -> None:
+    """ Disable all tools except the selected one (provided as reference) """
+    tools.polygon.enabled = False
+    tools.brush.enabled = False
+    tools.livewire.enabled = False
+    tools.smartbrush.enabled = False
+    selected.enabled = True
+    tools_cancel_drawing_all(tools)
+
+
+def tools_cancel_drawing_all(tools) -> None:
+    """ Cancel drawing for all tools """
+    tools.polygon.points = []
+    tools.livewire.path = []
+    tools.livewire.points = []
+
+
+def tools_set_plane_all(tools, axis) -> None:
+    """ Set the active drawing plane for all tools
+
+    This also cancels all drawing, to prevent the user from
+    continue a polygon or livewire on another plane.
+    """
+    tools.polygon.plane = axis
+    tools.brush.plane = axis
+    tools.livewire.plane = axis
+    tools.smartbrush.plane = axis
+    tools_cancel_drawing_all(tools)
+
+
 def brush_tool_apply(tool, image, texcoord, spacing):
     """ Apply brush tool to input 3D image
 

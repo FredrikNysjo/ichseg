@@ -71,10 +71,7 @@ class Context:
         self.trackball = Trackball()
         self.panning = Panning()
         self.mpr = MPR()
-        self.brush = BrushTool()
-        self.polygon = PolygonTool()
-        self.livewire = LivewireTool()
-        self.smartbrush = SmartBrushTool()
+        self.tools = ToolManager()
         self.segmented_volume_ml = 0.0
         self.cmds = []
 
@@ -150,6 +147,8 @@ def load_dataset_fromfile(ctx, filename) -> None:
 
 def do_initialize(ctx) -> None:
     """ Initialize the application state """
+    tools = ctx.tools
+
     ctx.classes = ["Any", "Intraventricular", "Intraparenchymal", "Subarachnoid", "Epidural", "Subdural"]
 
     load_dataset_fromfile(ctx, "")
@@ -160,12 +159,14 @@ def do_initialize(ctx) -> None:
     ctx.programs["raycast"] = create_program((raycast_vs, gl.GL_VERTEX_SHADER), (raycast_fs, gl.GL_FRAGMENT_SHADER))
     ctx.programs["polygon"] = create_program((polygon_vs, gl.GL_VERTEX_SHADER), (polygon_fs, gl.GL_FRAGMENT_SHADER))
     ctx.programs["background"] = create_program((background_vs, gl.GL_VERTEX_SHADER), (background_fs, gl.GL_FRAGMENT_SHADER))
-    ctx.vaos["polygon"], ctx.buffers["polygon"] = create_mesh_buffer(ctx.polygon.points)
+    ctx.vaos["polygon"], ctx.buffers["polygon"] = create_mesh_buffer(tools.polygon.points)
     ctx.vaos["empty"] = gl.glGenVertexArrays(1)
 
 
 def do_rendering(ctx) -> None:
     """ Do rendering """
+    tools = ctx.tools
+
     mpr_planes_snapped = snap_mpr_to_grid(ctx.volume, ctx.mpr.planes)
     level_range = ctx.mpr.level_range
     level_range_scaled = level_range  # Adjusted for normalized texture formats
@@ -220,32 +221,32 @@ def do_rendering(ctx) -> None:
     gl.glUniform3f(gl.glGetUniformLocation(program, "u_mpr_planes"), *mpr_planes_snapped)
     gl.glUniform2f(gl.glGetUniformLocation(program, "u_level_range"), *level_range_scaled)
     gl.glUniform3f(gl.glGetUniformLocation(program, "u_extent"), *extent)
-    gl.glUniform4f(gl.glGetUniformLocation(program, "u_brush"), *ctx.brush.position)
-    if ctx.smartbrush.enabled:
-        gl.glUniform4f(gl.glGetUniformLocation(program, "u_brush"), *ctx.smartbrush.position)
+    gl.glUniform4f(gl.glGetUniformLocation(program, "u_brush"), *tools.brush.position)
+    if tools.smartbrush.enabled:
+        gl.glUniform4f(gl.glGetUniformLocation(program, "u_brush"), *tools.smartbrush.position)
     gl.glUniform1i(gl.glGetUniformLocation(program, "u_volume"), 0)
     gl.glUniform1i(gl.glGetUniformLocation(program, "u_mask"), 1)
     gl.glBindVertexArray(ctx.vaos["default"])
     gl.glDrawArrays(gl.GL_TRIANGLE_STRIP, 0, 14)
     gl.glBindVertexArray(0)
 
-    if ctx.polygon.enabled:
+    if tools.polygon.enabled:
         program = ctx.programs["polygon"]
         gl.glUseProgram(program)
         gl.glUniformMatrix4fv(gl.glGetUniformLocation(program, "u_mvp"), 1, False, glm.value_ptr(mvp))
         gl.glDisable(gl.GL_DEPTH_TEST)
         gl.glBindVertexArray(ctx.vaos["polygon"])
-        gl.glDrawArrays(gl.GL_LINE_STRIP, 0, len(ctx.polygon.points) // 3)
+        gl.glDrawArrays(gl.GL_LINE_STRIP, 0, len(tools.polygon.points) // 3)
         gl.glBindVertexArray(0)
         gl.glEnable(gl.GL_DEPTH_TEST)
 
-    if ctx.livewire.enabled:
+    if tools.livewire.enabled:
         program = ctx.programs["polygon"]
         gl.glUseProgram(program)
         gl.glUniformMatrix4fv(gl.glGetUniformLocation(program, "u_mvp"), 1, False, glm.value_ptr(mvp))
         gl.glDisable(gl.GL_DEPTH_TEST)
         gl.glBindVertexArray(ctx.vaos["polygon"])
-        gl.glDrawArrays(gl.GL_LINE_STRIP, 0, len(ctx.livewire.points) // 3)
+        gl.glDrawArrays(gl.GL_LINE_STRIP, 0, len(tools.livewire.points) // 3)
         gl.glBindVertexArray(0)
         gl.glEnable(gl.GL_DEPTH_TEST)
 
@@ -258,93 +259,97 @@ def do_rendering(ctx) -> None:
         ndc_pos.z = depth[0][0] * 2.0 - 1.0
         view_pos = reconstruct_view_pos(ndc_pos, proj)
         texcoord = glm.vec3(glm.inverse(mv) * glm.vec4(view_pos, 1.0)) + 0.5001
-        ctx.brush.position = glm.vec4(texcoord - 0.5, ctx.brush.position.w)
-        ctx.smartbrush.position = glm.vec4(texcoord - 0.5, ctx.smartbrush.position.w)
+        tools.brush.position = glm.vec4(texcoord - 0.5, tools.brush.position.w)
+        tools.smartbrush.position = glm.vec4(texcoord - 0.5, tools.smartbrush.position.w)
 
-        if depth != 1.0 and ctx.brush.painting and ctx.brush.enabled:
-            if ctx.brush.count == 0:
+        if depth != 1.0 and tools.brush.painting and tools.brush.enabled:
+            if tools.brush.count == 0:
                 # Add full copy of current mask to command buffer to allow undo
                 cmd = UpdateVolumeCmd(ctx.mask, np.copy(ctx.mask), (0, 0, 0), ctx.textures["mask"])
                 ctx.cmds.append(cmd.apply())
-            ctx.brush.count += 1
-            result = brush_tool_apply(ctx.brush, ctx.mask, texcoord, spacing)
+            tools.brush.count += 1
+            result = brush_tool_apply(tools.brush, ctx.mask, texcoord, spacing)
             if result:
                 update_subtexture_3d(ctx.textures["mask"], result[0], result[1])
 
-        if depth != 1.0 and ctx.smartbrush.painting and ctx.smartbrush.enabled:
-            if ctx.smartbrush.count == 0:
+        if depth != 1.0 and tools.smartbrush.painting and tools.smartbrush.enabled:
+            if tools.smartbrush.count == 0:
                 cmd = UpdateVolumeCmd(ctx.mask, np.copy(ctx.mask), (0, 0, 0), ctx.textures["mask"])
                 ctx.cmds.append(cmd.apply())
-            if ctx.smartbrush.xy[0] != x or ctx.smartbrush.xy[1] != y:
-                ctx.smartbrush.count += 1
-                ctx.smartbrush.momentum = min(5, ctx.smartbrush.momentum + 2);
-                ctx.smartbrush.xy = (x, y)
-            if ctx.smartbrush.momentum > 0:
+            if tools.smartbrush.xy[0] != x or tools.smartbrush.xy[1] != y:
+                tools.smartbrush.count += 1
+                tools.smartbrush.momentum = min(5, tools.smartbrush.momentum + 2);
+                tools.smartbrush.xy = (x, y)
+            if tools.smartbrush.momentum > 0:
                 result = smartbrush_tool_apply(
-                    ctx.smartbrush, ctx.mask, ctx.volume, texcoord, spacing, level_range)
+                    tools.smartbrush, ctx.mask, ctx.volume, texcoord, spacing, level_range)
                 if result:
                     update_subtexture_3d(ctx.textures["mask"], result[0], result[1])
-                ctx.smartbrush.momentum = max(0, ctx.smartbrush.momentum - 1)
+                tools.smartbrush.momentum = max(0, tools.smartbrush.momentum - 1)
 
-        if depth != 1.0 and ctx.polygon.clicking and ctx.polygon.enabled:
-            ctx.polygon.points.extend((texcoord.x - 0.5, texcoord.y - 0.5, texcoord.z - 0.5))
-            update_mesh_buffer(ctx.buffers["polygon"], ctx.polygon.points)
-            ctx.polygon.clicking = False
+        if depth != 1.0 and tools.polygon.clicking and tools.polygon.enabled:
+            tools.polygon.points.extend((texcoord.x - 0.5, texcoord.y - 0.5, texcoord.z - 0.5))
+            update_mesh_buffer(ctx.buffers["polygon"], tools.polygon.points)
+            tools.polygon.clicking = False
 
-        if depth != 1.0 and ctx.livewire.enabled:
+        if depth != 1.0 and tools.livewire.enabled:
             d, h, w = ctx.volume.shape
             seed = int(texcoord.y * h) * w + int(texcoord.x * w)
             clicking = False
-            if ctx.livewire.clicking:
-                if not len(ctx.livewire.path):
+            if tools.livewire.clicking:
+                if not len(tools.livewire.path):
                     shift = level_range[0]
                     scale = 1.0 / max(1e-9, level_range[1] - level_range[0])
                     slice_ = ctx.volume[int(texcoord.z * d),:,:].astype(np.float32)
                     slice_normalized = np.maximum(0.0, np.minimum(1.0, (slice_ - shift) * scale))
 
-                    ctx.livewire.graph = create_graph_from_image(slice_normalized)
-                    update_edge_weights(ctx.livewire.graph, slice_normalized, 0.0, 1.0)
-                    ctx.livewire.dist, ctx.livewire.pred = compute_dijkstra(ctx.livewire.graph, seed)
-                    ctx.livewire.path.append(seed)
-                ctx.livewire.clicking = False
+                    tools.livewire.graph = create_graph_from_image(slice_normalized)
+                    update_edge_weights(tools.livewire.graph, slice_normalized, 0.0, 1.0)
+                    tools.livewire.dist, tools.livewire.pred = compute_dijkstra(
+                        tools.livewire.graph, seed)
+                    tools.livewire.path.append(seed)
+                tools.livewire.clicking = False
                 clicking = True
-            if len(ctx.livewire.path):
-                path = compute_shortest_path(ctx.livewire.pred, ctx.livewire.path[-1], seed)
-                update_livewire(ctx.livewire, path, texcoord.z - 0.5, ctx.volume)
-                if ctx.livewire.smoothing:
-                    smooth_livewire(ctx.livewire)
-                update_mesh_buffer(ctx.buffers["polygon"], ctx.livewire.points)
+            if len(tools.livewire.path):
+                path = compute_shortest_path(tools.livewire.pred, tools.livewire.path[-1], seed)
+                update_livewire(tools.livewire, path, texcoord.z - 0.5, ctx.volume)
+                if tools.livewire.smoothing:
+                    smooth_livewire(tools.livewire)
+                update_mesh_buffer(ctx.buffers["polygon"], tools.livewire.points)
                 if clicking:
-                    ctx.livewire.dist, ctx.livewire.pred = compute_dijkstra(ctx.livewire.graph, seed)
-                    ctx.livewire.path.extend(path)
-                    ctx.livewire.path.append(seed)
+                    tools.livewire.dist, tools.livewire.pred = compute_dijkstra(
+                        tools.livewire.graph, seed)
+                    tools.livewire.path.extend(path)
+                    tools.livewire.path.append(seed)
 
 
 def do_update(ctx) -> None:
     """ Update application state """
-    ctx.brush.position.w = 0.0 if not ctx.brush.enabled else ctx.brush.size * 0.5
-    ctx.smartbrush.position.w = 0.0 if not ctx.smartbrush.enabled else ctx.smartbrush.size * 0.5
+    tools = ctx.tools
 
-    if ctx.polygon.rasterise and len(ctx.polygon.points):
+    tools.brush.position.w = 0.0 if not tools.brush.enabled else tools.brush.size * 0.5
+    tools.smartbrush.position.w = 0.0 if not tools.smartbrush.enabled else tools.smartbrush.size * 0.5
+
+    if tools.polygon.rasterise and len(tools.polygon.points):
         # Rasterise polygon into mask image
-        result = polygon_tool_apply(ctx.polygon, ctx.mask)
+        result = polygon_tool_apply(tools.polygon, ctx.mask)
         if result:
             cmd = UpdateVolumeCmd(ctx.mask, result[0], result[1], ctx.textures["mask"])
             ctx.cmds.append(cmd.apply())
         # Clean up for drawing next polygon
-        ctx.polygon.points = []
-        ctx.polygon.rasterise = False
+        tools.polygon.points = []
+        tools.polygon.rasterise = False
 
-    if ctx.livewire.rasterise and len(ctx.livewire.points):
+    if tools.livewire.rasterise and len(tools.livewire.points):
         # Rasterise livewire into mask image
-        result = livewire_tool_apply(ctx.livewire, ctx.mask)
+        result = livewire_tool_apply(tools.livewire, ctx.mask)
         if result:
             cmd = UpdateVolumeCmd(ctx.mask, result[0], result[1], ctx.textures["mask"])
             ctx.cmds.append(cmd.apply())
         # Clean up for drawing next livewire
-        ctx.livewire.path = []
-        ctx.livewire.points = []
-        ctx.livewire.rasterise = False
+        tools.livewire.path = []
+        tools.livewire.points = []
+        tools.livewire.rasterise = False
 
     show_menubar(ctx)
     show_gui(ctx)
@@ -414,38 +419,10 @@ def show_volume_stats(ctx) -> None:
     imgui.end()
 
 
-def tools_disable_all(ctx, selected_tool) -> None:
-    """ Disable all tools except the selected one """
-    ctx.polygon.enabled = False
-    ctx.brush.enabled = False
-    ctx.livewire.enabled = False
-    ctx.smartbrush.enabled = False
-    selected_tool.enabled = True
-    tools_cancel_drawing_all(ctx)
-
-
-def tools_cancel_drawing_all(ctx) -> None:
-    """ Cancel drawing for all tools """
-    ctx.polygon.points = []
-    ctx.livewire.path = []
-    ctx.livewire.points = []
-
-
-def tools_set_plane_all(ctx, axis) -> None:
-    """ Set the active drawing plane for all tools
-
-    This also cancels all drawing, to prevent the user from
-    continue a polygon or livewire on another plane.
-    """
-    ctx.polygon.plane = axis
-    ctx.brush.plane = axis
-    ctx.livewire.plane = axis
-    ctx.smartbrush.plane = axis
-    tools_cancel_drawing_all(ctx)
-
-
 def show_gui(ctx) -> None:
     """ Show ImGui windows """
+    tools = ctx.tools
+
     sf = imgui.get_io().font_global_scale
     imgui.set_next_window_size(ctx.sidebar_width, ctx.height - 18 * sf)
     imgui.set_next_window_position(ctx.width, 18 * sf)
@@ -456,26 +433,28 @@ def show_gui(ctx) -> None:
     _, ctx.mpr.show_voxels = imgui.checkbox("Show voxels", ctx.mpr.show_voxels)
     _, ctx.mpr.level_range = imgui.drag_int2("Level range", *ctx.mpr.level_range, 10, -1000, 3000)
     if imgui.collapsing_header("Tools", flags=imgui.TREE_NODE_DEFAULT_OPEN)[0]:
-        clicked, ctx.polygon.enabled = imgui.checkbox("Polygon tool", ctx.polygon.enabled)
-        if clicked and ctx.polygon.enabled:
-            tools_disable_all(ctx, ctx.polygon)
-        clicked, ctx.brush.enabled = imgui.checkbox("Brush tool", ctx.brush.enabled)
-        if clicked and ctx.brush.enabled:
-            tools_disable_all(ctx, ctx.brush)
-        if ctx.brush.enabled:
-            _, ctx.brush.mode = imgui.combo("Mode", ctx.brush.mode, ["2D", "3D"])
-            _, ctx.brush.size = imgui.slider_int("Brush size", ctx.brush.size, 1, 80)
-        clicked, ctx.livewire.enabled = imgui.checkbox("Livewire tool", ctx.livewire.enabled)
-        if clicked and ctx.livewire.enabled:
-            tools_disable_all(ctx, ctx.livewire)
-        clicked, ctx.smartbrush.enabled = imgui.checkbox("Smartbrush tool", ctx.smartbrush.enabled)
-        if clicked and ctx.smartbrush.enabled:
-            tools_disable_all(ctx, ctx.smartbrush)
-        if ctx.smartbrush.enabled:
-            _, ctx.smartbrush.mode = imgui.combo("Mode", ctx.smartbrush.mode, ["2D", "3D"])
-            _, ctx.smartbrush.size = imgui.slider_int("Brush size", ctx.smartbrush.size, 1, 80)
-            _, ctx.smartbrush.sensitivity = imgui.slider_float("Sensitivity", ctx.smartbrush.sensitivity, 0.0, 10.0)
-            _, ctx.smartbrush.delta_scaling = imgui.slider_float("Delta scaling", ctx.smartbrush.delta_scaling, 1.0, 5.0)
+        clicked, tools.polygon.enabled = imgui.checkbox("Polygon tool", tools.polygon.enabled)
+        if clicked and tools.polygon.enabled:
+            tools_disable_all_except(tools, tools.polygon)
+        clicked, tools.brush.enabled = imgui.checkbox("Brush tool", tools.brush.enabled)
+        if clicked and tools.brush.enabled:
+            tools_disable_all_except(tools, tools.brush)
+        if tools.brush.enabled:
+            _, tools.brush.mode = imgui.combo("Mode", tools.brush.mode, ["2D", "3D"])
+            _, tools.brush.size = imgui.slider_int("Brush size", tools.brush.size, 1, 80)
+        clicked, tools.livewire.enabled = imgui.checkbox("Livewire tool", tools.livewire.enabled)
+        if clicked and tools.livewire.enabled:
+            tools_disable_all_except(tools, tools.livewire)
+        clicked, tools.smartbrush.enabled = imgui.checkbox("Smartbrush tool", tools.smartbrush.enabled)
+        if clicked and tools.smartbrush.enabled:
+            tools_disable_all_except(tools, tools.smartbrush)
+        if tools.smartbrush.enabled:
+            _, tools.smartbrush.mode = imgui.combo("Mode", tools.smartbrush.mode, ["2D", "3D"])
+            _, tools.smartbrush.size = imgui.slider_int("Brush size", tools.smartbrush.size, 1, 80)
+            _, tools.smartbrush.sensitivity = imgui.slider_float(
+                "Sensitivity", tools.smartbrush.sensitivity, 0.0, 10.0)
+            _, tools.smartbrush.delta_scaling = imgui.slider_float(
+                "Delta scaling", tools.smartbrush.delta_scaling, 1.0, 5.0)
     if imgui.collapsing_header("Misc")[0]:
         _, ctx.settings.bg_color1 = imgui.color_edit3("BG color 1", *ctx.settings.bg_color1)
         _, ctx.settings.bg_color2 = imgui.color_edit3("BG color 2", *ctx.settings.bg_color2)
@@ -498,30 +477,32 @@ def key_callback(window, key, scancode, action, mods):
         ctx.imgui_glfw.keyboard_callback(window, key, scancode, action, mods)
         return
 
+    tools = ctx.tools
+
     if key == glfw.KEY_LEFT_SHIFT:
         # Note: some keyboards will repeat action keys, so must check for that
         # case as well
         ctx.mpr.scrolling = (action == glfw.PRESS or action == glfw.REPEAT)
     if key == glfw.KEY_1:  # Show top-view
         ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(0, 0, 0)))
-        tools_set_plane_all(ctx, MPR_PLANE_Z)
+        tools_set_plane_all(tools, MPR_PLANE_Z)
     if key == glfw.KEY_2:  # Show side-view
         ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(-90, 90, 0)))
-        tools_set_plane_all(ctx, MPR_PLANE_X)
+        tools_set_plane_all(tools, MPR_PLANE_X)
     if key == glfw.KEY_3:  # Show front-view
         ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(-90, 180, 0)))
-        tools_set_plane_all(ctx, MPR_PLANE_Y)
+        tools_set_plane_all(tools, MPR_PLANE_Y)
     if key == glfw.KEY_S and (action == glfw.PRESS):
-        ctx.livewire.smoothing = not ctx.livewire.smoothing
+        tools.livewire.smoothing = not tools.livewire.smoothing
     if key == glfw.KEY_SPACE and action == glfw.PRESS:
         ctx.settings.show_mask = False
     if key == glfw.KEY_SPACE and action == glfw.RELEASE:
         ctx.settings.show_mask = True
     if key == glfw.KEY_ENTER:  # Rasterise polygon or livewire
-        ctx.polygon.rasterise = (action == glfw.PRESS)
-        ctx.livewire.rasterise = (action == glfw.PRESS)
+        tools.polygon.rasterise = (action == glfw.PRESS)
+        tools.livewire.rasterise = (action == glfw.PRESS)
     if key == glfw.KEY_ESCAPE:  # Cancel polygon or livewire
-        tools_cancel_drawing_all(ctx)
+        tools_cancel_drawing_all(tools)
     if key == glfw.KEY_Z and (mods & glfw.MOD_CONTROL):
         if action == glfw.PRESS and len(ctx.cmds):
             ctx.cmds.pop().undo()
@@ -533,6 +514,8 @@ def mouse_button_callback(window, button, action, mods):
         ctx.imgui_glfw.mouse_callback(window, button, action, mods)
         return
 
+    tools = ctx.tools
+
     x, y = glfw.get_cursor_pos(window)
     if button == glfw.MOUSE_BUTTON_RIGHT:
         ctx.trackball.center = glm.vec2(x, y)
@@ -541,12 +524,12 @@ def mouse_button_callback(window, button, action, mods):
         ctx.panning.center = glm.vec2(x, y)
         ctx.panning.panning = (action == glfw.PRESS)
     if button == glfw.MOUSE_BUTTON_LEFT:
-        ctx.brush.painting = (action == glfw.PRESS)
-        ctx.brush.count = 0
-        ctx.smartbrush.painting = (action == glfw.PRESS)
-        ctx.smartbrush.count = 0
-        ctx.polygon.clicking = (action == glfw.PRESS)
-        ctx.livewire.clicking = (action == glfw.PRESS)
+        tools.brush.painting = (action == glfw.PRESS)
+        tools.brush.count = 0
+        tools.smartbrush.painting = (action == glfw.PRESS)
+        tools.smartbrush.count = 0
+        tools.polygon.clicking = (action == glfw.PRESS)
+        tools.livewire.clicking = (action == glfw.PRESS)
 
 
 def cursor_pos_callback(window, x, y):

@@ -100,7 +100,7 @@ void main()
         intensity[0] = max(0.0, intensity[0] - u_level_range[0]) / (u_level_range[1] - u_level_range[0]);
 
     // Compute image gradient for mask volume
-    vec2 mask_grad;
+    vec2 mask_grad = vec2(0.0);
     mask_grad.x += step(0.5, texture(u_mask, p + dFdx(p) + 0.5).r);
     mask_grad.x -= step(0.5, texture(u_mask, p - dFdx(p) + 0.5).r);
     mask_grad.y += step(0.5, texture(u_mask, p + dFdy(p) + 0.5).r);

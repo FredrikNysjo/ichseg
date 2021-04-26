@@ -558,7 +558,9 @@ def scroll_callback(window, x, y):
         view_dir = glm.vec3(glm.inverse(glm.mat4_cast(ctx.trackball.quat))[2])
         for i in range(0, 3):
             if abs(view_dir[i]) == max(abs(view_dir.x), max(abs(view_dir.y), abs(view_dir.z))):
-                step = glm.sign(view_dir[i]) * 1e-2;
+                # Scroll by axis and step size calculated from volume size
+                delta = 1.0 / ctx.volume.shape[2 - i]
+                step = glm.sign(view_dir[i]) * delta
                 ctx.mpr.planes[i] = max(-0.4999, min(0.4999, ctx.mpr.planes[i] + step * y))
     else:
         ctx.settings.fov_degrees = max(5.0, min(90.0, ctx.settings.fov_degrees + 2.0 * y))

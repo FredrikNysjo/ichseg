@@ -335,18 +335,12 @@ def do_update(ctx) -> None:
         ctx.polygon.rasterise = False
 
     if ctx.livewire.rasterise and len(ctx.livewire.points):
-        npoints = len(ctx.livewire.points) // 3
-        polygon = np.zeros((npoints + 1, 2))
-        for i in range(0, npoints):
-            polygon[i, 0] = ctx.livewire.points[3 * i + 0] + 0.5
-            polygon[i, 1] = ctx.livewire.points[3 * i + 1] + 0.5
-        polygon[npoints, 0] = ctx.livewire.points[0] + 0.5
-        polygon[npoints, 1] = ctx.livewire.points[1] + 0.5
-        zoffset = int((ctx.livewire.points[2] + 0.5) * ctx.mask.shape[0])
-        image = rasterise_polygon(polygon, ctx.mask, zoffset)
-        image |= ctx.mask[zoffset,:,:]
-        cmd = UpdateVolumeCmd(ctx.mask, image, (0, 0, zoffset), ctx.textures["mask"])
-        ctx.cmds.append(cmd.apply())
+        # Rasterise livewire into mask image
+        result = livewire_tool_apply(ctx.livewire, ctx.mask)
+        if result:
+            cmd = UpdateVolumeCmd(ctx.mask, result[0], result[1], ctx.textures["mask"])
+            ctx.cmds.append(cmd.apply())
+        # Clean up for drawing next livewire
         ctx.livewire.path = []
         ctx.livewire.points = []
         ctx.livewire.rasterise = False

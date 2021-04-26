@@ -217,6 +217,16 @@ def polygon_tool_apply(tool, image):
     return subimage, offset
 
 
+def livewire_tool_apply(tool, image):
+    """ Apply livewire tool to 2D slice of input 3D image
+
+    Returns result (subimage, offset) if successfull, otherwise None
+    """
+    # Re-use the existing code for the polygon tool, since a livewire is
+    # basically just a polygon with a vertex for each pixel or voxel
+    return polygon_tool_apply(tool, image)
+
+
 def create_graph_from_image(image):
     """ Constructs a sparse matrix for a 4-connected image graph """
     h, w = image.shape

@@ -112,7 +112,7 @@ def tools_set_plane_all(tools, axis) -> None:
 def brush_tool_apply(tool, image, texcoord, spacing):
     """ Apply brush tool to input 3D image
 
-    Returns result (subimage, offset) if successfull, otherwise None
+    Returns: tuple (subimage, offset) if successfull, otherwise None
     """
     if abs(texcoord.x - 0.5) > 0.5 or abs(texcoord.y - 0.5) > 0.5 or abs(texcoord.z - 0.5) > 0.5:
         return None
@@ -152,7 +152,7 @@ def smartbrush_tool_apply(tool, image, volume, texcoord, spacing, level_range=No
     Reference: F. Malmberg et al., "SmartPaint: a tool for interactive
     segmentation of medical volume images", CMBBE, 2014.
 
-    Returns result (subimage, offset) if successfull, otherwise None
+    Returns: tuple (subimage, offset) if successfull, otherwise None
     """
     if abs(texcoord.x - 0.5) > 0.5 or abs(texcoord.y - 0.5) > 0.5 or abs(texcoord.z - 0.5) > 0.5:
         return None
@@ -230,7 +230,7 @@ def rasterise_polygon_2d(polygon, image) -> np.array:
 def polygon_tool_apply(tool, image):
     """ Apply polygon tool to 2D slice of input 3D image
 
-    Returns result (subimage, offset) if successfull, otherwise None
+    Returns: tuple (subimage, offset) if successfull, otherwise None
     """
     if len(tool.points) == 0:
         return None
@@ -275,14 +275,69 @@ def polygon_tool_apply(tool, image):
 def livewire_tool_apply(tool, image):
     """ Apply livewire tool to 2D slice of input 3D image
 
-    Returns result (subimage, offset) if successfull, otherwise None
+    Returns: tuple (subimage, offset) if successfull, otherwise None
     """
     # Re-use the existing code for the polygon tool, since a livewire is
     # basically just a polygon with a vertex for each pixel or voxel
     return polygon_tool_apply(tool, image)
 
 
-def create_graph_from_image(image):
+def livewire_tool_update_graph(tool, image, texcoord, level_range):
+    """ Update livewire graph from 2D slice of input 3D image """
+    if len(tool.path):
+        return  # Active livewire should already have a graph
+
+    d, h, w = image.shape
+    if tool.plane == MPR_PLANE_Z:
+        slice_ = image[int(texcoord.z * d),:,:].astype(np.float32)
+        seed = int(texcoord.y * h) * w + int(texcoord.x * w)
+    elif tool.plane == MPR_PLANE_Y:
+        slice_ = image[:,int(texcoord.y * h),:].astype(np.float32)
+        seed = int(texcoord.z * d) * w + int(texcoord.x * w)
+    elif tool.plane == MPR_PLANE_X:
+        slice_ = image[:,:,int(texcoord.x * w)].astype(np.float32)
+        seed = int(texcoord.z * d) * h + int(texcoord.y * h)
+    else:
+        assert False, "Invalid MPR plane index"
+
+    shift = level_range[0]
+    scale = 1.0 / max(1e-9, level_range[1] - level_range[0])
+    slice_normalized = np.maximum(0.0, np.minimum(1.0, (slice_ - shift) * scale))
+
+    tool.graph = _create_graph_from_image(slice_normalized)
+    _update_edge_weights(tool.graph, slice_normalized, 0.0, 1.0)
+
+    tool.dist, tool.pred = _compute_dijkstra(tool.graph, seed)
+    tool.path.append(seed)
+
+
+def livewire_tool_update_path(tool, image, texcoord, level_range, clicking):
+    """ Update livewire path from current 2D image graph """
+    d, h, w = image.shape
+    if tool.plane == MPR_PLANE_Z:
+        seed = int(texcoord.y * h) * w + int(texcoord.x * w)
+        offset = texcoord.z - 0.5
+    elif tool.plane == MPR_PLANE_Y:
+        seed = int(texcoord.z * d) * w + int(texcoord.x * w)
+        offset = texcoord.y - 0.5
+    elif tool.plane == MPR_PLANE_X:
+        seed = int(texcoord.z * d) * h + int(texcoord.y * h)
+        offset = texcoord.x - 0.5
+    else:
+        assert False, "Invalid MPR plane index"
+
+    path = _compute_shortest_path(tool.pred, tool.path[-1], seed)
+    _update_livewire(tool, path, offset, image)
+    if tool.smoothing:
+        _smooth_livewire(tool)
+
+    if clicking:
+        tool.dist, tool.pred = _compute_dijkstra(tool.graph, seed)
+        tool.path.extend(path)
+        tool.path.append(seed)
+
+
+def _create_graph_from_image(image):
     """ Constructs a sparse matrix for a 4-connected image graph """
     h, w = image.shape
     weights = np.array([1., 1., 1., 1.])
@@ -291,7 +346,7 @@ def create_graph_from_image(image):
     return graph
 
 
-def update_edge_weights(graph, image, alpha0, alpha1):
+def _update_edge_weights(graph, image, alpha0, alpha1):
     """ Update graph edge weights from image values """
     assert(graph.format == 'csr' or graph.format == 'lil')
     h, w = image.shape
@@ -318,7 +373,7 @@ def update_edge_weights(graph, image, alpha0, alpha1):
                 graph.data[graph.indptr[idx]:graph.indptr[idx+1]] = (w0[x-1], w1[x-1], w2[x-1], w3[x-1])
 
 
-def compute_dijkstra(graph, seed):
+def _compute_dijkstra(graph, seed):
     """ Computes distances to seed point(s) in the graph, and
         predecessor matrix, using Dijkstra's algorithm
     """
@@ -326,8 +381,10 @@ def compute_dijkstra(graph, seed):
     return dist, pred
 
 
-def compute_shortest_path(pred, a, b):
+def _compute_shortest_path(pred, a, b):
     """ Compute shortest path (as index list) from predecessor matrix """
+    if b < 0 or b >= len(pred):
+        return []  # This can happen when cursor is moved outside window
     path = []
     idx = pred[b]
     while idx != -9999 and idx != a:
@@ -337,20 +394,30 @@ def compute_shortest_path(pred, a, b):
     return path
 
 
-def update_livewire(livewire, path_new, z, volume):
+def _update_livewire(livewire, path_new, offset, volume):
     """ Update line segments of livewire from its current path and
         new path not yet appended to the livewire (for preview)
     """
     d, h, w = volume.shape
     points = []
     for idx in (livewire.path + path_new):
-        x = (idx % w) / float(w) - 0.5
-        y = (idx // w) / float(w) - 0.5
+        if livewire.plane == MPR_PLANE_Z:
+            x = (idx % w) / float(w) - 0.5
+            y = (idx // w) / float(h) - 0.5
+            z = offset
+        elif livewire.plane == MPR_PLANE_Y:
+            x = (idx % w) / float(w) - 0.5
+            z = (idx // w) / float(d) - 0.5
+            y = offset
+        elif livewire.plane == MPR_PLANE_X:
+            x = offset
+            y = (idx % h) / float(h) - 0.5
+            z = (idx // h) / float(d) - 0.5
         points.extend((x, y, z))
     livewire.points = points
 
 
-def smooth_livewire(livewire, iterations=5):
+def _smooth_livewire(livewire, iterations=5):
     """ Apply smoothing to line segments in livewire """
     points = livewire.points
     output = [x for x in points]

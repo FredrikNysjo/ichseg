@@ -293,34 +293,16 @@ def do_rendering(ctx) -> None:
             tools.polygon.clicking = False
 
         if depth != 1.0 and tools.livewire.enabled:
-            d, h, w = ctx.volume.shape
-            seed = int(texcoord.y * h) * w + int(texcoord.x * w)
             clicking = False
             if tools.livewire.clicking:
-                if not len(tools.livewire.path):
-                    shift = level_range[0]
-                    scale = 1.0 / max(1e-9, level_range[1] - level_range[0])
-                    slice_ = ctx.volume[int(texcoord.z * d),:,:].astype(np.float32)
-                    slice_normalized = np.maximum(0.0, np.minimum(1.0, (slice_ - shift) * scale))
-
-                    tools.livewire.graph = create_graph_from_image(slice_normalized)
-                    update_edge_weights(tools.livewire.graph, slice_normalized, 0.0, 1.0)
-                    tools.livewire.dist, tools.livewire.pred = compute_dijkstra(
-                        tools.livewire.graph, seed)
-                    tools.livewire.path.append(seed)
+                livewire_tool_update_graph(tools.livewire, ctx.volume, texcoord, level_range)
                 tools.livewire.clicking = False
                 clicking = True
             if len(tools.livewire.path):
-                path = compute_shortest_path(tools.livewire.pred, tools.livewire.path[-1], seed)
-                update_livewire(tools.livewire, path, texcoord.z - 0.5, ctx.volume)
-                if tools.livewire.smoothing:
-                    smooth_livewire(tools.livewire)
+                livewire_tool_update_path(
+                    tools.livewire, ctx.volume, texcoord, level_range, clicking)
+                # Update polyline for preview
                 update_mesh_buffer(ctx.buffers["polygon"], tools.livewire.points)
-                if clicking:
-                    tools.livewire.dist, tools.livewire.pred = compute_dijkstra(
-                        tools.livewire.graph, seed)
-                    tools.livewire.path.extend(path)
-                    tools.livewire.path.append(seed)
 
 
 def do_update(ctx) -> None:
@@ -562,6 +544,8 @@ def scroll_callback(window, x, y):
                 delta = 1.0 / ctx.volume.shape[2 - i]
                 step = glm.sign(view_dir[i]) * delta
                 ctx.mpr.planes[i] = max(-0.4999, min(0.4999, ctx.mpr.planes[i] + step * y))
+        # Prevent user from continuing, e.g., a polygon on another plane
+        tools_cancel_drawing_all(ctx.tools)
     else:
         ctx.settings.fov_degrees = max(5.0, min(90.0, ctx.settings.fov_degrees + 2.0 * y))
 

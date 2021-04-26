@@ -267,7 +267,7 @@ def do_rendering(ctx) -> None:
                 cmd = UpdateVolumeCmd(ctx.mask, np.copy(ctx.mask), (0, 0, 0), ctx.textures["mask"])
                 ctx.cmds.append(cmd.apply())
             ctx.brush.count += 1
-            result = apply_brush(ctx.mask, texcoord, ctx.brush, spacing)
+            result = brush_tool_apply(ctx.brush, ctx.mask, texcoord, spacing)
             if result:
                 update_subtexture_3d(ctx.textures["mask"], result[0], result[1])
 
@@ -280,7 +280,8 @@ def do_rendering(ctx) -> None:
                 ctx.smartbrush.momentum = min(5, ctx.smartbrush.momentum + 2);
                 ctx.smartbrush.xy = (x, y)
             if ctx.smartbrush.momentum > 0:
-                result = apply_smartbrush(ctx.mask, ctx.volume, texcoord, ctx.smartbrush, spacing, level_range)
+                result = smartbrush_tool_apply(
+                    ctx.smartbrush, ctx.mask, ctx.volume, texcoord, spacing, level_range)
                 if result:
                     update_subtexture_3d(ctx.textures["mask"], result[0], result[1])
                 ctx.smartbrush.momentum = max(0, ctx.smartbrush.momentum - 1)

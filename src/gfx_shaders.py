@@ -96,8 +96,7 @@ void main()
         intensity[0] = max(intensity[0], texture(u_volume, p + 0.5).r);
         intensity[1] = max(intensity[1], texture(u_mask, p + 0.5).r);
     }
-    if (bool(u_show_mpr))
-        intensity[0] = max(0.0, intensity[0] - u_level_range[0]) / (u_level_range[1] - u_level_range[0]);
+    intensity[0] = max(0.0, intensity[0] - u_level_range[0]) / (u_level_range[1] - u_level_range[0]);
 
     // Compute image gradient for mask volume
     vec2 mask_grad = vec2(0.0);

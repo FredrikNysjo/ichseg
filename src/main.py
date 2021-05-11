@@ -13,6 +13,7 @@ import imgui
 from imgui.integrations.glfw import GlfwRenderer
 import tkinter as tk
 import tkinter.filedialog
+import tkinter.messagebox
 
 import os
 import subprocess
@@ -55,6 +56,12 @@ class UpdateVolumeCmd:
         return self
 
 
+class CommandManager:
+    def __init__(self):
+        self.stack = []
+        self.max_undo_length = 8
+
+
 class Context:
     def __init__(self):
         self.window = None
@@ -73,7 +80,25 @@ class Context:
         self.mpr = MPR()
         self.tools = ToolManager()
         self.segmented_volume_ml = 0.0
-        self.cmds = []
+        self.cmds = CommandManager()
+
+
+def cmds_push_apply(cmds, cmd):
+    """ Apply command and push it onto the manager's undo stack """
+    if len(cmds.stack) >= cmds.max_undo_length:
+        cmds.stack.pop(0)  # Make space on the stack
+    cmds.stack.append(cmd.apply())
+
+
+def cmds_pop_undo(cmds):
+    """ Pop command from the manager's undo stack and undo it """
+    if len(cmds.stack):
+        cmds.stack.pop().undo()
+
+
+def cmds_clear_stack(cmds):
+    """ Clear all commands from the manager's undo stack """
+    cmds.stack = []
 
 
 def load_segmentation_mask(ct_volume, dirname):
@@ -129,7 +154,7 @@ def update_datasets(ctx) -> None:
 def update_current_dataset(ctx) -> None:
     """ Update volume and segmentation mask for current dataset """
     ctx.volume, ctx.header, ctx.mask = load_dataset(ctx.settings.basepath, ctx.datasets, ctx.current)
-    ctx.cmds = []  # Clear command buffer since it will be invalid for new volume
+    cmds_clear_stack(ctx.cmds)  # Clear since this will be invalid for new volume
 
 
 def load_dataset_fromfile(ctx, filename) -> None:
@@ -138,11 +163,11 @@ def load_dataset_fromfile(ctx, filename) -> None:
     if ".vtk" in filename:
         ctx.volume, ctx.header = load_vtk(filename, True)
     elif filename:  # Assume it is DICOM
-        ctx.volume, ctx.header = load_dicom(filename, True)
+        ctx.volume, ctx.header = load_dicom(filename)
     else:
         ctx.volume, ctx.header, ctx.mask = create_dummy_dataset()
     ctx.mask = np.zeros(ctx.volume.shape, dtype=np.uint8) 
-    ctx.cmds = []
+    cmds_clear_stack(ctx.cmds)
 
 
 def do_initialize(ctx) -> None:
@@ -266,7 +291,7 @@ def do_rendering(ctx) -> None:
             if tools.brush.count == 0:
                 # Add full copy of current mask to command buffer to allow undo
                 cmd = UpdateVolumeCmd(ctx.mask, np.copy(ctx.mask), (0, 0, 0), ctx.textures["mask"])
-                ctx.cmds.append(cmd.apply())
+                cmds_push_apply(ctx.cmds, cmd)
             tools.brush.count += 1
             result = brush_tool_apply(tools.brush, ctx.mask, texcoord, spacing)
             if result:
@@ -275,7 +300,7 @@ def do_rendering(ctx) -> None:
         if depth != 1.0 and tools.smartbrush.painting and tools.smartbrush.enabled:
             if tools.smartbrush.count == 0:
                 cmd = UpdateVolumeCmd(ctx.mask, np.copy(ctx.mask), (0, 0, 0), ctx.textures["mask"])
-                ctx.cmds.append(cmd.apply())
+                cmds_push_apply(ctx.cmds, cmd)
             if tools.smartbrush.xy[0] != x or tools.smartbrush.xy[1] != y:
                 tools.smartbrush.count += 1
                 tools.smartbrush.momentum = min(5, tools.smartbrush.momentum + 2);
@@ -317,9 +342,9 @@ def do_update(ctx) -> None:
         result = polygon_tool_apply(tools.polygon, ctx.mask)
         if result:
             cmd = UpdateVolumeCmd(ctx.mask, result[0], result[1], ctx.textures["mask"])
-            ctx.cmds.append(cmd.apply())
+            cmds_push_apply(ctx.cmds, cmd)
         # Clean up for drawing next polygon
-        tools.polygon.points = []
+        tools_cancel_drawing_all(tools)
         tools.polygon.rasterise = False
 
     if tools.livewire.rasterise and len(tools.livewire.points):
@@ -327,10 +352,9 @@ def do_update(ctx) -> None:
         result = livewire_tool_apply(tools.livewire, ctx.mask)
         if result:
             cmd = UpdateVolumeCmd(ctx.mask, result[0], result[1], ctx.textures["mask"])
-            ctx.cmds.append(cmd.apply())
+            cmds_push_apply(ctx.cmds, cmd)
         # Clean up for drawing next livewire
-        tools.livewire.path = []
-        tools.livewire.points = []
+        tools_cancel_drawing_all(tools)
         tools.livewire.rasterise = False
 
     show_menubar(ctx)
@@ -351,6 +375,13 @@ def show_save_selection() -> str:
     return filepath
 
 
+def show_resample_orientation_dialog():
+    root = tk.Tk()
+    root.withdraw()  # Hide Tk window
+    msg = "Warning: this will change the volume resolution and clear any current segmentation"
+    return tk.messagebox.askokcancel("Resample orientation", msg)
+
+
 def show_menubar(ctx) -> None:
     """ Show ImGui menu bar """
     imgui.begin_main_menu_bar()
@@ -362,6 +393,11 @@ def show_menubar(ctx) -> None:
                 load_dataset_fromfile(ctx, filename)
                 update_texture_3d(ctx.textures["volume"], ctx.volume)
                 update_texture_3d(ctx.textures["mask"], ctx.mask)
+                tools_cancel_drawing_all(ctx.tools)
+        if imgui.menu_item("Save volume file...")[0]:
+            filename = show_save_selection()
+            if filename:
+                save_vtk(filename, ctx.volume, ctx.header)
         if imgui.menu_item("Save segmentation...")[0]:
             filename = show_save_selection()
             if filename:
@@ -370,12 +406,20 @@ def show_menubar(ctx) -> None:
             glfw.set_window_should_close(ctx.window, glfw.TRUE)
         imgui.end_menu()
     if imgui.begin_menu("Edit"):
-        if imgui.menu_item("Undo (Ctrl+z)")[0] and len(ctx.cmds):
-            ctx.cmds.pop().undo()
+        if imgui.menu_item("Undo (Ctrl+z)")[0]:
+            cmds_pop_undo(ctx.cmds)
+        if imgui.menu_item("Resample orientation...")[0]:
+            if show_resample_orientation_dialog():
+                ctx.volume, ctx.header = resample_volume(ctx.volume, ctx.header)
+                ctx.mask = np.zeros(ctx.volume.shape, dtype=np.uint8)
+                update_texture_3d(ctx.textures["volume"], ctx.volume)
+                update_texture_3d(ctx.textures["mask"], ctx.mask)
+                tools_cancel_drawing_all(ctx.tools)
+                cmds_clear_stack(ctx.cmds)
         if imgui.menu_item("Clear segmentation")[0]:
             zeros = np.zeros(ctx.mask.shape, dtype=ctx.mask.dtype)
             cmd = UpdateVolumeCmd(ctx.mask, zeros, (0, 0, 0), ctx.textures["mask"])
-            ctx.cmds.append(cmd.apply())
+            cmds_push_apply(ctx.cmds, cmd)
         imgui.end_menu()
     if imgui.begin_menu("Tools"):
         if imgui.menu_item("Volume statistics")[0]:
@@ -445,6 +489,8 @@ def show_gui(ctx) -> None:
         clicked, tools.seedpaint.enabled = imgui.checkbox("Seed paint tool", tools.seedpaint.enabled)
         if clicked and tools.seedpaint.enabled:
             tools_disable_all_except(tools, tools.seedpaint)
+        if tools.seedpaint.enabled:
+            imgui.text("Not implemented yet (TODO)")
     if imgui.collapsing_header("Misc")[0]:
         _, ctx.settings.bg_color1 = imgui.color_edit3("BG color 1", *ctx.settings.bg_color1)
         _, ctx.settings.bg_color2 = imgui.color_edit3("BG color 2", *ctx.settings.bg_color2)
@@ -494,8 +540,8 @@ def key_callback(window, key, scancode, action, mods):
     if key == glfw.KEY_ESCAPE:  # Cancel polygon or livewire
         tools_cancel_drawing_all(tools)
     if key == glfw.KEY_Z and (mods & glfw.MOD_CONTROL):
-        if action == glfw.PRESS and len(ctx.cmds):
-            ctx.cmds.pop().undo()
+        if action == glfw.PRESS:
+            cmds_pop_undo(ctx.cmds)
 
 
 def mouse_button_callback(window, button, action, mods):

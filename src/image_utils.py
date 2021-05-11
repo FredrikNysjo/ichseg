@@ -53,8 +53,6 @@ def save_vtk(filename, volume, header) -> None:
     """ Save volume to be stored in legacy VTK format on disk. Currently only
         supports scalar data stored in binary format (not ASCII).
     """
-    assert(volume.dtype == np.uint8)
-
     with open(filename, 'wb') as stream:
         w, h, d = header["dimensions"]
         sx, sy, sz = header["spacing"]
@@ -64,6 +62,15 @@ def save_vtk(filename, volume, header) -> None:
         stream.write(b"SPACING %f %f %f\n" % (sx, sy, sz))
         stream.write(b"ORIGIN 0 0 0\n")
         stream.write(b"POINT_DATA %d\n" % (w * h * d))
-        stream.write(b"SCALARS scalars unsigned_char 1\n")
+        stream.write(b"SCALARS scalars %s 1\n" % header["format"].encode("ascii"))
         stream.write(b"LOOKUP_TABLE default\n")
-        stream.write(volume);
+        if header["format"] == "unsigned_char":
+            stream.write(volume)
+        elif header["format"] == "short":
+            dt = np.dtype(np.int16).newbyteorder(">")
+            stream.write(volume.astype(dtype=dt))
+        elif header["format"] == "float":
+            dt = np.dtype(np.float32).newbyteorder(">")
+            stream.write(volume.astype(dtype=dt))
+        else:
+            assert False, "Scalar type not supported: " + header["format"]

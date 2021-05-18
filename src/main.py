@@ -119,44 +119,10 @@ def load_segmentation_mask(ct_volume, dirname):
     return mask
 
 
-def load_datasets_from_dir(dirname):
-    """ Extract list of datasets (VTK-images) from directory """
-    datasets = []
-    if os.path.exists(dirname):
-        for filename in os.listdir(dirname):
-            if filename.lower().count(".vtk"):
-                datasets.append(filename)
-    datasets.sort()
-    return datasets
-
-
 def create_dummy_dataset():
     volume = np.zeros([1,1,1], dtype=np.int16)
     header = {"dimensions": (1, 1, 1), "spacing": (1, 1, 1)}
-    mask = np.zeros(volume.shape, dtype=np.uint8)
-    return volume, header, mask
-
-
-def load_dataset(basepath, vtk_filenames, current):
-    if not os.path.exists(basepath) or not vtk_filenames:
-        return create_dummy_dataset()
-    vtk_filename = vtk_filenames[current]
-    volume, header = load_vtk(os.path.join(basepath, "ct_scans/" + vtk_filename), normalize_scalars=True)
-    mask = load_segmentation_mask(volume, os.path.join(basepath, "masks/" + vtk_filename.split(".")[0]))
-    return volume, header, mask
-
-
-def update_datasets(ctx) -> None:
-    """ Update list of dataset names """
-    ctx.datasets = load_datasets_from_dir(os.path.join(ctx.settings.basepath, "ct_scans"))
-    ctx.current, ctx.label = 0, 0
-    update_current_dataset(ctx)
-
-
-def update_current_dataset(ctx) -> None:
-    """ Update volume and segmentation mask for current dataset """
-    ctx.volume, ctx.header, ctx.mask = load_dataset(ctx.settings.basepath, ctx.datasets, ctx.current)
-    cmds_clear_stack(ctx.cmds)  # Clear since this will be invalid for new volume
+    return volume, header
 
 
 def load_dataset_fromfile(ctx, filename) -> None:
@@ -164,10 +130,10 @@ def load_dataset_fromfile(ctx, filename) -> None:
     ctx.current, ctx.label = 0, 0
     if ".vtk" in filename:
         ctx.volume, ctx.header = load_vtk(filename, True)
-    elif filename:  # Assume it is DICOM
+    elif filename:  # Assume format is DICOM
         ctx.volume, ctx.header = load_dicom(filename)
     else:
-        ctx.volume, ctx.header, ctx.mask = create_dummy_dataset()
+        ctx.volume, ctx.header = create_dummy_dataset()
     ctx.mask = np.zeros(ctx.volume.shape, dtype=np.uint8)
     cmds_clear_stack(ctx.cmds)
 

@@ -171,49 +171,6 @@ def load_stl_binary(filename) -> List[float]:
     return mesh
 
 
-def vertex_hash(v, cell_spacing, hash_size=(1<<31)) -> int:
-    """ Vertex hash function from paper "Optimized Spatial Hashing for
-    Collision Detection of Deformable Objects"
-    """
-    x = int(v[0] / cell_spacing)
-    y = int(v[1] / cell_spacing)
-    z = int(v[2] / cell_spacing)
-    p = (int(73856093), int(19349663), int(83492791))
-    return ((x * p[0]) ^ (y * p[1]) ^ (z * p[2])) % hash_size
-
-
-def compute_mesh_normals(mesh, cell_spacing=1e-4) -> List[float]:
-    """ Compute per-vertex normals for non-indexed mesh (using vertex hashing)
-
-    TODO:
-    - Use mesh bounding-box length to normalize the cell size
-    """
-    nvertices = len(mesh) // 3
-    normals = []
-    accum = {}
-    for j in range(0, 3):
-        for i in range(0, nvertices, 3):
-            v0 = glm.vec3(mesh[3 * i + 0 : 3 * i + 3])
-            v1 = glm.vec3(mesh[3 * i + 3 : 3 * i + 6])
-            v2 = glm.vec3(mesh[3 * i + 6 : 3 * i + 9])
-            h0 = vertex_hash(v0, cell_spacing)
-            h1 = vertex_hash(v1, cell_spacing)
-            h2 = vertex_hash(v2, cell_spacing)
-            if j == 0:
-                accum[h0] = glm.vec3(0.0)
-                accum[h1] = glm.vec3(0.0)
-                accum[h2] = glm.vec3(0.0)
-            elif j == 1:
-                n = glm.cross(v1 - v0, v2 - v0)
-                accum[h0] += n; accum[h1] += n; accum[h2] += n
-            else:
-                normals.extend(glm.normalize(accum[h0]))
-                normals.extend(glm.normalize(accum[h1]))
-                normals.extend(glm.normalize(accum[h2]))
-    assert(len(normals) == len(mesh))
-    return normals
-
-
 def reconstruct_view_pos(ndc_pos, proj) -> glm.vec3:
     """ Reconstruct view-space position from NDC position and projection matrix """
     view_pos = glm.inverse(proj) * glm.vec4(ndc_pos, 1.0)

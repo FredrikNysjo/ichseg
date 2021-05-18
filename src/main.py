@@ -16,6 +16,7 @@ import tkinter.filedialog
 import tkinter.messagebox
 
 import os
+import copy
 import subprocess
 
 
@@ -27,6 +28,7 @@ class Settings:
         self.fov_degrees = 45.0
         self.projection_mode = 1  # 0=orthographic; 1=perspective
         self.show_stats = False
+        self.show_input_guide = False
         self.basepath = "/home/fredrik/Desktop/ct-ich-raw/Raw_ct_scans"
 
 
@@ -166,8 +168,27 @@ def load_dataset_fromfile(ctx, filename) -> None:
         ctx.volume, ctx.header = load_dicom(filename)
     else:
         ctx.volume, ctx.header, ctx.mask = create_dummy_dataset()
-    ctx.mask = np.zeros(ctx.volume.shape, dtype=np.uint8) 
+    ctx.mask = np.zeros(ctx.volume.shape, dtype=np.uint8)
     cmds_clear_stack(ctx.cmds)
+
+
+def load_mask_fromfile(ctx, filename) -> None:
+    """ Load a segmentation mask from file
+
+    If the grayscale volume we are segmenting does not match the size
+    of the loaded mask, a new empty volume will be created
+
+    Currently, only 8-bit masks in VTK format are supported
+    """
+    if ".vtk" not in filename:
+        return
+    mask, header = load_vtk(filename)
+    if mask.dtype == np.uint8:
+        if mask.shape != ctx.volume.shape:
+            ctx.header = header
+            ctx.volume = np.zeros(mask.shape, dtype=np.uint8)
+        ctx.mask = mask
+        cmds_clear_stack(ctx.cmds)
 
 
 def do_initialize(ctx) -> None:
@@ -382,11 +403,18 @@ def show_resample_orientation_dialog():
     return tk.messagebox.askokcancel("Resample orientation", msg)
 
 
+def show_quit_dialog():
+    root = tk.Tk()
+    root.withdraw()  # Hide Tk window
+    msg = "Warning: this will lose any unsaved changes to the current segmentation"
+    return tk.messagebox.askokcancel("Quit", msg)
+
+
 def show_menubar(ctx) -> None:
     """ Show ImGui menu bar """
     imgui.begin_main_menu_bar()
     if imgui.begin_menu("File"):
-        if imgui.menu_item("Open volume file...")[0]:
+        if imgui.menu_item("Open volume...")[0]:
             filename = show_file_selection()
             if filename:
                 ctx.settings.basepath = filename
@@ -394,16 +422,26 @@ def show_menubar(ctx) -> None:
                 update_texture_3d(ctx.textures["volume"], ctx.volume)
                 update_texture_3d(ctx.textures["mask"], ctx.mask)
                 tools_cancel_drawing_all(ctx.tools)
-        if imgui.menu_item("Save volume file...")[0]:
+        if imgui.menu_item("Save volume...")[0]:
             filename = show_save_selection()
             if filename:
                 save_vtk(filename, ctx.volume, ctx.header)
+        if imgui.menu_item("Open segmentation...")[0]:
+            filename = show_file_selection()
+            if filename:
+                load_mask_fromfile(ctx, filename)
+                update_texture_3d(ctx.textures["volume"], ctx.volume)
+                update_texture_3d(ctx.textures["mask"], ctx.mask)
+                tools_cancel_drawing_all(ctx.tools)
         if imgui.menu_item("Save segmentation...")[0]:
             filename = show_save_selection()
             if filename:
-                save_vtk(filename, ctx.mask, ctx.header)
+                mask_header = copy.deepcopy(ctx.header)
+                mask_header["format"] = "unsigned_char"
+                save_vtk(filename, ctx.mask, mask_header)
         if imgui.menu_item("Quit")[0]:
-            glfw.set_window_should_close(ctx.window, glfw.TRUE)
+            if show_quit_dialog():
+                glfw.set_window_should_close(ctx.window, glfw.TRUE)
         imgui.end_menu()
     if imgui.begin_menu("Edit"):
         if imgui.menu_item("Undo (Ctrl+z)")[0]:
@@ -425,6 +463,10 @@ def show_menubar(ctx) -> None:
         if imgui.menu_item("Volume statistics")[0]:
             ctx.settings.show_stats = not ctx.settings.show_stats
         imgui.end_menu()
+    if imgui.begin_menu("Help"):
+        if imgui.menu_item("Input guide")[0]:
+            ctx.settings.show_input_guide = not ctx.settings.show_input_guide
+        imgui.end_menu()
     imgui.end_main_menu_bar()
 
 
@@ -442,6 +484,26 @@ def show_volume_stats(ctx) -> None:
     imgui.text("Segmented volume (ml): %.2f" % (ctx.segmented_volume_ml))
     if imgui.button("Update"):
         ctx.segmented_volume_ml = np.sum(ctx.mask > 127) * np.prod(ctx.header["spacing"]) * 1e-3
+    imgui.end()
+
+
+def show_input_guide(ctx) -> None:
+    sf = imgui.get_io().font_global_scale
+    imgui.set_next_window_size(250 * sf, 210 * sf)
+    imgui.set_next_window_position(10 * sf, 18 * sf)
+
+    flags = (imgui.WINDOW_NO_RESIZE|imgui.WINDOW_NO_COLLAPSE)
+    _, ctx.settings.show_input_guide = imgui.begin("Input guide", closable=True, flags=flags)
+    imgui.text("Left mouse: Paint or draw")
+    imgui.text("Right mouse: Rotate view")
+    imgui.text("Middle mouse: Pan view")
+    imgui.text("Scroll: Zoom view")
+    imgui.text("Shift+Scroll: Scroll slices")
+    imgui.text("Key 1: Axial view")
+    imgui.text("Key 2: Sagital view")
+    imgui.text("Key 3: Coronial view")
+    imgui.text("Space: Hide segmentation")
+    imgui.text("Ctrl+z: Undo")
     imgui.end()
 
 
@@ -498,6 +560,8 @@ def show_gui(ctx) -> None:
     imgui.end()
     if ctx.settings.show_stats:
         show_volume_stats(ctx)
+    if ctx.settings.show_input_guide:
+        show_input_guide(ctx)
 
 
 def char_callback(window, char):

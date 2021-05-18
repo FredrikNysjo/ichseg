@@ -34,6 +34,7 @@ def load_vtk(filename, normalize_scalars=False) -> Tuple[np.array, Dict]:
                 dim = header["dimensions"][::-1]
                 if header["format"] == "unsigned_char":
                     volume = np.frombuffer(stream.read(), dtype=np.uint8).reshape(dim)
+                    volume = volume.astype(dtype=np.uint8)  # Make writeable copy
                 elif header["format"] == "short":
                     dt = np.dtype(np.int16).newbyteorder(">")
                     volume = np.frombuffer(stream.read(), dtype=dt).reshape(dim)
@@ -65,11 +66,14 @@ def save_vtk(filename, volume, header) -> None:
         stream.write(b"SCALARS scalars %s 1\n" % header["format"].encode("ascii"))
         stream.write(b"LOOKUP_TABLE default\n")
         if header["format"] == "unsigned_char":
+            assert volume.dtype == np.uint8
             stream.write(volume)
         elif header["format"] == "short":
+            assert volume.dtype == np.int16
             dt = np.dtype(np.int16).newbyteorder(">")
             stream.write(volume.astype(dtype=dt))
         elif header["format"] == "float":
+            assert volume.dtype == np.float32
             dt = np.dtype(np.float32).newbyteorder(">")
             stream.write(volume.astype(dtype=dt))
         else:

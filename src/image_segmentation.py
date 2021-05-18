@@ -11,6 +11,8 @@ MPR_PLANE_Y = 1
 MPR_PLANE_Z = 2
 TOOL_MODE_2D = 0
 TOOL_MODE_3D = 1
+TOOL_OP_ADD = 0
+TOOL_OP_SUBTRACT = 1
 
 
 class BrushTool:
@@ -109,17 +111,17 @@ def tools_set_plane_all(tools, axis) -> None:
     tools_cancel_drawing_all(tools)
 
 
-def brush_tool_apply(tool, image, texcoord, spacing):
+def brush_tool_apply(tool, image, texcoord, spacing, op=TOOL_OP_ADD):
     """ Apply brush tool to input 3D image
 
     Returns: tuple (subimage, offset) if successfull, otherwise None
     """
     if abs(texcoord.x - 0.5) > 0.5 or abs(texcoord.y - 0.5) > 0.5 or abs(texcoord.z - 0.5) > 0.5:
         return None
-    return _brush_tool_apply(tool, image, texcoord, spacing)
+    return _brush_tool_apply(tool, image, texcoord, spacing, op)
 
 
-def _brush_tool_apply(tool, image, texcoord, spacing):
+def _brush_tool_apply(tool, image, texcoord, spacing, op):
     """ Apply brush tool to input 3D image (helper function) """
     d, h, w = image.shape[0:3]
     center = texcoord * glm.vec3(w, h, d)
@@ -139,13 +141,18 @@ def _brush_tool_apply(tool, image, texcoord, spacing):
     subimage = (tool.size*0.5 - (x**2 + y**2 + z**2)**0.5 + 0.5) * 255.99
     subimage = np.maximum(0, np.minimum(255, subimage)).astype(dtype=np.uint8)
 
-    image[lower.z:upper.z,lower.y:upper.y,lower.x:upper.x] = np.maximum(
-        image[lower.z:upper.z,lower.y:upper.y,lower.x:upper.x], subimage)
+    if op == TOOL_OP_ADD:
+        image[lower.z:upper.z,lower.y:upper.y,lower.x:upper.x] = np.maximum(
+            image[lower.z:upper.z,lower.y:upper.y,lower.x:upper.x], subimage)
+    else:
+        image[lower.z:upper.z,lower.y:upper.y,lower.x:upper.x] = np.minimum(
+            image[lower.z:upper.z,lower.y:upper.y,lower.x:upper.x], 255 - subimage)
     subimage = image[lower.z:upper.z,lower.y:upper.y,lower.x:upper.x]
     return subimage, lower
 
 
-def smartbrush_tool_apply(tool, image, volume, texcoord, spacing, level_range=None):
+def smartbrush_tool_apply(tool, image, volume, texcoord, spacing,
+                          level_range=None, op=TOOL_OP_ADD):
     """ Apply smart brush to input 3D image
 
     This tool uses the SmartPaint method from [Malmberg et al. 2014].
@@ -156,10 +163,10 @@ def smartbrush_tool_apply(tool, image, volume, texcoord, spacing, level_range=No
     """
     if abs(texcoord.x - 0.5) > 0.5 or abs(texcoord.y - 0.5) > 0.5 or abs(texcoord.z - 0.5) > 0.5:
         return None
-    return _smartbrush_tool_apply(tool, image, volume, texcoord, spacing, level_range)
+    return _smartbrush_tool_apply(tool, image, volume, texcoord, spacing, level_range, op)
 
 
-def _smartbrush_tool_apply(tool, image, volume, texcoord, spacing, level_range):
+def _smartbrush_tool_apply(tool, image, volume, texcoord, spacing, level_range, op):
     """ Apply smart brush to input 3D image (helper function)
 
     This tool uses the SmartPaint method from [Malmberg et al. 2014].
@@ -196,7 +203,8 @@ def _smartbrush_tool_apply(tool, image, volume, texcoord, spacing, level_range):
     delta = np.abs(intensity - midpoint) * tool.delta_scaling
     rho = np.maximum(0.0, 1.0 - delta)**tool.sensitivity
     alpha = sigma * rho
-    subimage[:,:,:] = (0.05 * alpha + (1.0 - 0.05 * alpha) * value) * 255.0
+    lambda_ = 1.0 if op == TOOL_OP_ADD else 0.0
+    subimage[:,:,:] = (0.05 * alpha * lambda_ + (1.0 - 0.05 * alpha) * value) * 255.0
 
     subimage = np.maximum(0.0, np.minimum(255.0, subimage)).astype(dtype=np.uint8)
     image[lower.z:upper.z,lower.y:upper.y,lower.x:upper.x] = subimage
@@ -227,7 +235,7 @@ def rasterise_polygon_2d(polygon, image) -> np.array:
     return output
 
 
-def polygon_tool_apply(tool, image):
+def polygon_tool_apply(tool, image, op=TOOL_OP_ADD):
     """ Apply polygon tool to 2D slice of input 3D image
 
     Returns: tuple (subimage, offset) if successfull, otherwise None
@@ -266,20 +274,23 @@ def polygon_tool_apply(tool, image):
 
     # Rasterise 2D polygon into image slice
     subimage = rasterise_polygon_2d(polygon, slice_)
-    subimage |= slice_                         # Merge with previous result
+    if op == TOOL_OP_ADD:
+        subimage = np.maximum(subimage, slice_)
+    else:
+        subimage = np.minimum(255 - subimage, slice_)
     subimage = subimage.reshape(output_shape)  # Final result must be a volume
 
     return subimage, offset
 
 
-def livewire_tool_apply(tool, image):
+def livewire_tool_apply(tool, image, op=TOOL_OP_ADD):
     """ Apply livewire tool to 2D slice of input 3D image
 
     Returns: tuple (subimage, offset) if successfull, otherwise None
     """
     # Re-use the existing code for the polygon tool, since a livewire is
     # basically just a polygon with a vertex for each pixel or voxel
-    return polygon_tool_apply(tool, image)
+    return polygon_tool_apply(tool, image, op)
 
 
 def livewire_tool_update_graph(tool, image, texcoord, level_range):

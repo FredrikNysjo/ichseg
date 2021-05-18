@@ -70,7 +70,7 @@ class Context:
         self.width = 1000
         self.height = 700
         self.aspect = 1000.0 / 700.0
-        self.sidebar_width = 270
+        self.sidebar_width = 290
         self.programs = {}
         self.vaos = {}
         self.buffers = {}
@@ -195,7 +195,7 @@ def do_initialize(ctx) -> None:
     """ Initialize the application state """
     tools = ctx.tools
 
-    ctx.classes = ["Any", "Intraventricular", "Intraparenchymal", "Subarachnoid", "Epidural", "Subdural"]
+    ctx.classes = ["Label 255", "Label 0 (Clear)"]
 
     load_dataset_fromfile(ctx, "")
 
@@ -212,6 +212,7 @@ def do_initialize(ctx) -> None:
 def do_rendering(ctx) -> None:
     """ Do rendering """
     tools = ctx.tools
+    tool_op = TOOL_OP_ADD if ctx.label == 0 else TOOL_OP_SUBTRACT
 
     mpr_planes_snapped = snap_mpr_to_grid(ctx.volume, ctx.mpr.planes)
     level_range = ctx.mpr.level_range
@@ -260,7 +261,7 @@ def do_rendering(ctx) -> None:
     gl.glTexParameteri(gl.GL_TEXTURE_3D, gl.GL_TEXTURE_MAG_FILTER, filter_mode)
     gl.glUniformMatrix4fv(gl.glGetUniformLocation(program, "u_mvp"), 1, False, glm.value_ptr(mvp))
     gl.glUniformMatrix4fv(gl.glGetUniformLocation(program, "u_mv"), 1, False, glm.value_ptr(mv))
-    gl.glUniform1i(gl.glGetUniformLocation(program, "u_label"), ctx.label)
+    gl.glUniform1i(gl.glGetUniformLocation(program, "u_label"), 0)
     gl.glUniform1i(gl.glGetUniformLocation(program, "u_show_mask"), ctx.settings.show_mask)
     gl.glUniform1i(gl.glGetUniformLocation(program, "u_projection_mode"), ctx.settings.projection_mode)
     gl.glUniform1i(gl.glGetUniformLocation(program, "u_show_mpr"), ctx.mpr.enabled)
@@ -314,7 +315,7 @@ def do_rendering(ctx) -> None:
                 cmd = UpdateVolumeCmd(ctx.mask, np.copy(ctx.mask), (0, 0, 0), ctx.textures["mask"])
                 cmds_push_apply(ctx.cmds, cmd)
             tools.brush.count += 1
-            result = brush_tool_apply(tools.brush, ctx.mask, texcoord, spacing)
+            result = brush_tool_apply(tools.brush, ctx.mask, texcoord, spacing, tool_op)
             if result:
                 update_subtexture_3d(ctx.textures["mask"], result[0], result[1])
 
@@ -328,7 +329,7 @@ def do_rendering(ctx) -> None:
                 tools.smartbrush.xy = (x, y)
             if tools.smartbrush.momentum > 0:
                 result = smartbrush_tool_apply(
-                    tools.smartbrush, ctx.mask, ctx.volume, texcoord, spacing, level_range)
+                    tools.smartbrush, ctx.mask, ctx.volume, texcoord, spacing, level_range, tool_op)
                 if result:
                     update_subtexture_3d(ctx.textures["mask"], result[0], result[1])
                 tools.smartbrush.momentum = max(0, tools.smartbrush.momentum - 1)
@@ -354,13 +355,14 @@ def do_rendering(ctx) -> None:
 def do_update(ctx) -> None:
     """ Update application state """
     tools = ctx.tools
+    tool_op = TOOL_OP_ADD if ctx.label == 0 else TOOL_OP_SUBTRACT
 
     tools.brush.position.w = 0.0 if not tools.brush.enabled else tools.brush.size * 0.5
     tools.smartbrush.position.w = 0.0 if not tools.smartbrush.enabled else tools.smartbrush.size * 0.5
 
     if tools.polygon.rasterise and len(tools.polygon.points):
         # Rasterise polygon into mask image
-        result = polygon_tool_apply(tools.polygon, ctx.mask)
+        result = polygon_tool_apply(tools.polygon, ctx.mask, tool_op)
         if result:
             cmd = UpdateVolumeCmd(ctx.mask, result[0], result[1], ctx.textures["mask"])
             cmds_push_apply(ctx.cmds, cmd)
@@ -370,7 +372,7 @@ def do_update(ctx) -> None:
 
     if tools.livewire.rasterise and len(tools.livewire.points):
         # Rasterise livewire into mask image
-        result = livewire_tool_apply(tools.livewire, ctx.mask)
+        result = livewire_tool_apply(tools.livewire, ctx.mask, tool_op)
         if result:
             cmd = UpdateVolumeCmd(ctx.mask, result[0], result[1], ctx.textures["mask"])
             cmds_push_apply(ctx.cmds, cmd)
@@ -464,7 +466,7 @@ def show_menubar(ctx) -> None:
             ctx.settings.show_stats = not ctx.settings.show_stats
         imgui.end_menu()
     if imgui.begin_menu("Help"):
-        if imgui.menu_item("Input guide")[0]:
+        if imgui.menu_item("Quick reference")[0]:
             ctx.settings.show_input_guide = not ctx.settings.show_input_guide
         imgui.end_menu()
     imgui.end_main_menu_bar()
@@ -489,19 +491,21 @@ def show_volume_stats(ctx) -> None:
 
 def show_input_guide(ctx) -> None:
     sf = imgui.get_io().font_global_scale
-    imgui.set_next_window_size(250 * sf, 210 * sf)
+    imgui.set_next_window_size(250 * sf, 240 * sf)
     imgui.set_next_window_position(10 * sf, 18 * sf)
 
     flags = (imgui.WINDOW_NO_RESIZE|imgui.WINDOW_NO_COLLAPSE)
-    _, ctx.settings.show_input_guide = imgui.begin("Input guide", closable=True, flags=flags)
-    imgui.text("Left mouse: Paint or draw")
+    _, ctx.settings.show_input_guide = imgui.begin("Quick reference", closable=True, flags=flags)
+    imgui.text("Left mouse: Paint/draw")
     imgui.text("Right mouse: Rotate view")
     imgui.text("Middle mouse: Pan view")
     imgui.text("Scroll: Zoom view")
     imgui.text("Shift+Scroll: Scroll slices")
-    imgui.text("Key 1: Axial view")
-    imgui.text("Key 2: Sagital view")
-    imgui.text("Key 3: Coronial view")
+    imgui.text("Key 1: Show axial view")
+    imgui.text("Key 2: Show sagital view")
+    imgui.text("Key 3: Show coronal view")
+    imgui.text("Page up/down: Change label")
+    imgui.text("Enter: Close polygon")
     imgui.text("Space: Hide segmentation")
     imgui.text("Ctrl+z: Undo")
     imgui.end()
@@ -516,9 +520,8 @@ def show_gui(ctx) -> None:
     imgui.set_next_window_position(ctx.width, 18 * sf)
 
     imgui.begin("Segmentation", flags=(imgui.WINDOW_NO_RESIZE|imgui.WINDOW_NO_COLLAPSE))
-    _, ctx.label = imgui.combo("Class", ctx.label, ctx.classes)
+    _, ctx.label = imgui.combo("Label", ctx.label, ctx.classes)
     _, ctx.settings.show_mask = imgui.checkbox("Show segmentation", ctx.settings.show_mask)
-    _, ctx.mpr.show_voxels = imgui.checkbox("Show voxels", ctx.mpr.show_voxels)
     _, ctx.mpr.level_range = imgui.drag_int2("Level range", *ctx.mpr.level_range, 10, -1000, 3000)
     if imgui.collapsing_header("Tools", flags=imgui.TREE_NODE_DEFAULT_OPEN)[0]:
         # Polygon tool settings
@@ -530,33 +533,44 @@ def show_gui(ctx) -> None:
         if clicked and tools.brush.enabled:
             tools_disable_all_except(tools, tools.brush)
         if tools.brush.enabled:
+            imgui.indent(5)
             _, tools.brush.mode = imgui.combo("Mode", tools.brush.mode, ["2D", "3D"])
             _, tools.brush.size = imgui.slider_int("Brush size", tools.brush.size, 1, 80)
+            imgui.unindent(5)
         # Livewire tool settings
         clicked, tools.livewire.enabled = imgui.checkbox("Livewire tool", tools.livewire.enabled)
         if clicked and tools.livewire.enabled:
             tools_disable_all_except(tools, tools.livewire)
+        if tools.livewire.enabled:
+            imgui.indent(5)
+            _, tools.livewire.smoothing = imgui.checkbox("Smoothing enabled", tools.livewire.smoothing)
+            imgui.unindent(5)
         # Smart brush tool settings
         clicked, tools.smartbrush.enabled = imgui.checkbox("Smartbrush tool", tools.smartbrush.enabled)
         if clicked and tools.smartbrush.enabled:
             tools_disable_all_except(tools, tools.smartbrush)
         if tools.smartbrush.enabled:
+            imgui.indent(5)
             _, tools.smartbrush.mode = imgui.combo("Mode", tools.smartbrush.mode, ["2D", "3D"])
             _, tools.smartbrush.size = imgui.slider_int("Brush size", tools.smartbrush.size, 1, 80)
             _, tools.smartbrush.sensitivity = imgui.slider_float(
                 "Sensitivity", tools.smartbrush.sensitivity, 0.0, 10.0)
             _, tools.smartbrush.delta_scaling = imgui.slider_float(
-                "Delta scaling", tools.smartbrush.delta_scaling, 1.0, 5.0)
+                "Delta scale", tools.smartbrush.delta_scaling, 1.0, 5.0)
+            imgui.unindent(5)
         # Seed painting tool settings
         clicked, tools.seedpaint.enabled = imgui.checkbox("Seed paint tool", tools.seedpaint.enabled)
         if clicked and tools.seedpaint.enabled:
             tools_disable_all_except(tools, tools.seedpaint)
         if tools.seedpaint.enabled:
+            imgui.indent(5)
             imgui.text("Not implemented yet (TODO)")
+            imgui.unindent(5)
     if imgui.collapsing_header("Misc")[0]:
         _, ctx.settings.bg_color1 = imgui.color_edit3("BG color 1", *ctx.settings.bg_color1)
         _, ctx.settings.bg_color2 = imgui.color_edit3("BG color 2", *ctx.settings.bg_color2)
         _, ctx.mpr.enabled = imgui.checkbox("Show MPR", ctx.mpr.enabled)
+        _, ctx.mpr.show_voxels = imgui.checkbox("Show voxels", ctx.mpr.show_voxels)
     imgui.end()
     if ctx.settings.show_stats:
         show_volume_stats(ctx)
@@ -592,8 +606,10 @@ def key_callback(window, key, scancode, action, mods):
     if key == glfw.KEY_3:  # Show front-view
         ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(-90, 180, 0)))
         tools_set_plane_all(tools, MPR_PLANE_Y)
-    if key == glfw.KEY_S and (action == glfw.PRESS):
-        tools.livewire.smoothing = not tools.livewire.smoothing
+    if key == glfw.KEY_PAGE_UP and action == glfw.PRESS:
+        ctx.label = max(ctx.label - 1, 0)
+    if key == glfw.KEY_PAGE_DOWN and action == glfw.PRESS:
+        ctx.label = min(ctx.label + 1, len(ctx.classes) - 1)
     if key == glfw.KEY_SPACE and action == glfw.PRESS:
         ctx.settings.show_mask = False
     if key == glfw.KEY_SPACE and action == glfw.RELEASE:

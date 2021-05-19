@@ -44,6 +44,7 @@ class LivewireTool:
         self.dist = None
         self.path = []
         self.points = []
+        self.markers = []
         self.smoothing = True
         self.enabled = False
         self.rasterise = False
@@ -98,6 +99,7 @@ def tools_cancel_drawing_all(tools) -> None:
     tools.polygon.points = []
     tools.livewire.path = []
     tools.livewire.points = []
+    tools.livewire.markers = []
 
 
 def tools_set_plane_all(tools, axis) -> None:

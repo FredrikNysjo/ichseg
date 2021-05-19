@@ -172,6 +172,7 @@ def do_initialize(ctx) -> None:
     ctx.programs["polygon"] = create_program((polygon_vs, gl.GL_VERTEX_SHADER), (polygon_fs, gl.GL_FRAGMENT_SHADER))
     ctx.programs["background"] = create_program((background_vs, gl.GL_VERTEX_SHADER), (background_fs, gl.GL_FRAGMENT_SHADER))
     ctx.vaos["polygon"], ctx.buffers["polygon"] = create_mesh_buffer(tools.polygon.points)
+    ctx.vaos["markers"], ctx.buffers["markers"] = create_mesh_buffer(tools.polygon.points)
     ctx.vaos["empty"] = gl.glGenVertexArrays(1)
 
 
@@ -250,9 +251,13 @@ def do_rendering(ctx) -> None:
         gl.glUseProgram(program)
         gl.glUniformMatrix4fv(gl.glGetUniformLocation(program, "u_mvp"), 1, False, glm.value_ptr(mvp))
         gl.glDisable(gl.GL_DEPTH_TEST)
+        gl.glPointSize(5.0)
         gl.glBindVertexArray(ctx.vaos["polygon"])
         gl.glDrawArrays(gl.GL_LINE_STRIP, 0, len(tools.polygon.points) // 3)
+        gl.glBindVertexArray(ctx.vaos["markers"])
+        gl.glDrawArrays(gl.GL_POINTS, 0, len(tools.polygon.points) // 3)
         gl.glBindVertexArray(0)
+        gl.glPointSize(1.0)
         gl.glEnable(gl.GL_DEPTH_TEST)
 
     if tools.livewire.enabled:
@@ -260,8 +265,11 @@ def do_rendering(ctx) -> None:
         gl.glUseProgram(program)
         gl.glUniformMatrix4fv(gl.glGetUniformLocation(program, "u_mvp"), 1, False, glm.value_ptr(mvp))
         gl.glDisable(gl.GL_DEPTH_TEST)
+        gl.glPointSize(5.0)
         gl.glBindVertexArray(ctx.vaos["polygon"])
         gl.glDrawArrays(gl.GL_LINE_STRIP, 0, len(tools.livewire.points) // 3)
+        gl.glBindVertexArray(ctx.vaos["markers"])
+        gl.glDrawArrays(gl.GL_POINTS, 0, len(tools.livewire.markers) // 3)
         gl.glBindVertexArray(0)
         gl.glEnable(gl.GL_DEPTH_TEST)
 
@@ -305,11 +313,14 @@ def do_rendering(ctx) -> None:
         if depth != 1.0 and tools.polygon.clicking and tools.polygon.enabled:
             tools.polygon.points.extend((texcoord.x - 0.5, texcoord.y - 0.5, texcoord.z - 0.5))
             update_mesh_buffer(ctx.buffers["polygon"], tools.polygon.points)
+            update_mesh_buffer(ctx.buffers["markers"], tools.polygon.points)
             tools.polygon.clicking = False
 
         if depth != 1.0 and tools.livewire.enabled:
             clicking = False
             if tools.livewire.clicking:
+                tools.livewire.markers.extend((texcoord.x - 0.5, texcoord.y - 0.5, texcoord.z - 0.5))
+                update_mesh_buffer(ctx.buffers["markers"], tools.livewire.markers)
                 livewire_tool_update_graph(tools.livewire, ctx.volume, texcoord, level_range)
                 tools.livewire.clicking = False
                 clicking = True

@@ -221,6 +221,8 @@ def do_rendering(ctx) -> None:
     gl.glEnable(gl.GL_CULL_FACE)
     gl.glActiveTexture(gl.GL_TEXTURE1)
     gl.glBindTexture(gl.GL_TEXTURE_3D, ctx.textures["mask"])
+    gl.glTexParameteri(gl.GL_TEXTURE_3D, gl.GL_TEXTURE_MIN_FILTER, filter_mode)
+    gl.glTexParameteri(gl.GL_TEXTURE_3D, gl.GL_TEXTURE_MAG_FILTER, filter_mode)
     gl.glActiveTexture(gl.GL_TEXTURE0)
     gl.glBindTexture(gl.GL_TEXTURE_3D, ctx.textures["volume"])
     gl.glTexParameteri(gl.GL_TEXTURE_3D, gl.GL_TEXTURE_MIN_FILTER, filter_mode)
@@ -494,6 +496,10 @@ def show_gui(ctx) -> None:
         clicked, tools.polygon.enabled = imgui.checkbox("Polygon tool", tools.polygon.enabled)
         if clicked and tools.polygon.enabled:
             tools_disable_all_except(tools, tools.polygon)
+        if tools.polygon.enabled:
+            imgui.indent(5)
+            _, tools.polygon.antialiasing = imgui.checkbox("Antialiasing", tools.polygon.antialiasing)
+            imgui.unindent(5)
         # Brush tool settings
         clicked, tools.brush.enabled = imgui.checkbox("Brush tool", tools.brush.enabled)
         if clicked and tools.brush.enabled:
@@ -502,6 +508,7 @@ def show_gui(ctx) -> None:
             imgui.indent(5)
             _, tools.brush.mode = imgui.combo("Mode", tools.brush.mode, ["2D", "3D"])
             _, tools.brush.size = imgui.slider_int("Brush size", tools.brush.size, 1, 80)
+            _, tools.brush.antialiasing = imgui.checkbox("Antialiasing", tools.brush.antialiasing)
             imgui.unindent(5)
         # Livewire tool settings
         clicked, tools.livewire.enabled = imgui.checkbox("Livewire tool", tools.livewire.enabled)

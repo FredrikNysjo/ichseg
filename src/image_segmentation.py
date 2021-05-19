@@ -24,6 +24,7 @@ class BrushTool:
         self.count = 0
         self.mode = TOOL_MODE_3D
         self.plane = MPR_PLANE_Z
+        self.antialiasing = True
 
 
 class PolygonTool:
@@ -33,6 +34,7 @@ class PolygonTool:
         self.rasterise = False
         self.clicking = False
         self.plane = MPR_PLANE_Z
+        self.antialiasing = True
 
 
 class LivewireTool:
@@ -47,6 +49,7 @@ class LivewireTool:
         self.rasterise = False
         self.clicking = False
         self.plane = MPR_PLANE_Z
+        self.antialiasing = False
 
 
 class SmartBrushTool:
@@ -139,6 +142,9 @@ def _brush_tool_apply(tool, image, texcoord, spacing, op):
     z, x, y = np.meshgrid(zz, yy, xx, indexing='ij')
     z *= spacing.z / spacing.x;  # Need to take slice spacing into account
     subimage = (tool.size*0.5 - (x**2 + y**2 + z**2)**0.5 + 0.5) * 255.99
+    if tool.antialiasing == False:
+        # Apply thresholding to create binary mask
+        subimage = (subimage >= 127.5).astype(dtype=np.uint8) * 255
     subimage = np.maximum(0, np.minimum(255, subimage)).astype(dtype=np.uint8)
 
     if op == TOOL_OP_ADD:
@@ -235,6 +241,25 @@ def rasterise_polygon_2d(polygon, image) -> np.array:
     return output
 
 
+def rasterise_polygon_2d_aa(polygon, image) -> np.array:
+    """ Rasterise closed 2D polygon using fast XOR-based method
+
+    This version of the function computes an anti-aliased result
+    by taking multiple samples when rasterising the polygon
+    """
+    h, w = image.shape
+    accum = np.zeros(image.shape, dtype=np.uint16)
+    nsamples = 0
+    for y in range(0, 2):
+        for x in range(0, 2):
+            polygon_copy = polygon.astype(np.float32)
+            polygon_copy[:,0] += (x * 0.5 - 0.25) / w
+            polygon_copy[:,1] += (y * 0.5 - 0.25) / h
+            accum += rasterise_polygon_2d(polygon_copy, image)
+            nsamples += 1
+    return np.minimum(255, accum / nsamples).astype(np.uint8)
+
+
 def polygon_tool_apply(tool, image, op=TOOL_OP_ADD):
     """ Apply polygon tool to 2D slice of input 3D image
 
@@ -272,14 +297,19 @@ def polygon_tool_apply(tool, image, op=TOOL_OP_ADD):
     polygon[npoints, 0] = tool.points[axes[0]] + 0.5
     polygon[npoints, 1] = tool.points[axes[1]] + 0.5
 
-    # Rasterise 2D polygon into image slice
-    subimage = rasterise_polygon_2d(polygon, slice_)
+    # Rasterise 2D polygon into image of same size as slice
+    if tool.antialiasing:
+        subimage = rasterise_polygon_2d_aa(polygon, slice_)
+    else:
+        subimage = rasterise_polygon_2d(polygon, slice_)
+
+    # Combine with previous segmentation mask from slice
     if op == TOOL_OP_ADD:
         subimage = np.maximum(subimage, slice_)
     else:
         subimage = np.minimum(255 - subimage, slice_)
-    subimage = subimage.reshape(output_shape)  # Final result must be a volume
 
+    subimage = subimage.reshape(output_shape)  # Result must be a volume
     return subimage, offset
 
 

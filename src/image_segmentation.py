@@ -21,7 +21,7 @@ class BrushTool:
         self.size = 30
         self.enabled = False
         self.painting = False
-        self.count = 0
+        self.frame_count = 0
         self.mode = TOOL_MODE_3D
         self.plane = MPR_PLANE_Z
         self.antialiasing = True
@@ -33,6 +33,8 @@ class PolygonTool:
         self.enabled = False
         self.rasterise = False
         self.clicking = False
+        self.selected = -1
+        self.frame_count = 0
         self.plane = MPR_PLANE_Z
         self.antialiasing = True
 
@@ -57,13 +59,13 @@ class SmartBrushTool:
     def __init__(self):
         self.position = glm.vec4(0.0)
         self.size = 30
-        self.sensitivity = 5.0
-        self.delta_scaling = 1.0
+        self.sensitivity = 3.0
+        self.delta_scaling = 2.0
         self.enabled = False
         self.painting = False
         self.momentum = 0
         self.xy = (0, 0)
-        self.count = 0
+        self.frame_count = 0
         self.mode = TOOL_MODE_3D
         self.plane = MPR_PLANE_Z
 
@@ -121,7 +123,7 @@ def brush_tool_apply(tool, image, texcoord, spacing, op=TOOL_OP_ADD):
 
     Returns: tuple (subimage, offset) if successfull, otherwise None
     """
-    if abs(texcoord.x - 0.5) > 0.5 or abs(texcoord.y - 0.5) > 0.5 or abs(texcoord.z - 0.5) > 0.5:
+    if max(abs(texcoord - 0.5)) > 0.5:
         return None
     return _brush_tool_apply(tool, image, texcoord, spacing, op)
 
@@ -169,7 +171,7 @@ def smartbrush_tool_apply(tool, image, volume, texcoord, spacing,
 
     Returns: tuple (subimage, offset) if successfull, otherwise None
     """
-    if abs(texcoord.x - 0.5) > 0.5 or abs(texcoord.y - 0.5) > 0.5 or abs(texcoord.z - 0.5) > 0.5:
+    if max(abs(texcoord - 0.5)) > 0.5:
         return None
     return _smartbrush_tool_apply(tool, image, volume, texcoord, spacing, level_range, op)
 
@@ -313,6 +315,22 @@ def polygon_tool_apply(tool, image, op=TOOL_OP_ADD):
 
     subimage = subimage.reshape(output_shape)  # Result must be a volume
     return subimage, offset
+
+
+def polygon_tool_find_closest(tool, p, radius=0.005):
+    """ Find closest polygon vertex to p (within some search radius)
+
+    Returns: offset to closest vertex if found, otherwise -1
+    """
+    closest = -1
+    mindist = 9999.0
+    for i in range(0, len(tool.points), 3):
+        q = tool.points[i:i+3]
+        dist = ((p[0]-q[0])**2 + (p[1]-q[1])**2 + (p[2]-q[2])**2)**0.5
+        if dist < mindist and dist < radius:
+            mindist = dist
+            closest = i
+    return closest
 
 
 def livewire_tool_apply(tool, image, op=TOOL_OP_ADD):

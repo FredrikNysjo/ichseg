@@ -282,25 +282,26 @@ def do_rendering(ctx) -> None:
         ndc_pos.z = depth[0][0] * 2.0 - 1.0
         view_pos = reconstruct_view_pos(ndc_pos, proj)
         texcoord = glm.vec3(glm.inverse(mv) * glm.vec4(view_pos, 1.0)) + 0.5001
+
         tools.brush.position = glm.vec4(texcoord - 0.5, tools.brush.position.w)
         tools.smartbrush.position = glm.vec4(texcoord - 0.5, tools.smartbrush.position.w)
 
         if depth != 1.0 and tools.brush.painting and tools.brush.enabled:
-            if tools.brush.count == 0:
+            if tools.brush.frame_count == 0:
                 # Add full copy of current mask to command buffer to allow undo
                 cmd = UpdateVolumeCmd(ctx.mask, np.copy(ctx.mask), (0, 0, 0), ctx.textures["mask"])
                 cmds_push_apply(ctx.cmds, cmd)
-            tools.brush.count += 1
+            tools.brush.frame_count += 1
             result = brush_tool_apply(tools.brush, ctx.mask, texcoord, spacing, tool_op)
             if result:
                 update_subtexture_3d(ctx.textures["mask"], result[0], result[1])
 
         if depth != 1.0 and tools.smartbrush.painting and tools.smartbrush.enabled:
-            if tools.smartbrush.count == 0:
+            if tools.smartbrush.frame_count == 0:
                 cmd = UpdateVolumeCmd(ctx.mask, np.copy(ctx.mask), (0, 0, 0), ctx.textures["mask"])
                 cmds_push_apply(ctx.cmds, cmd)
             if tools.smartbrush.xy[0] != x or tools.smartbrush.xy[1] != y:
-                tools.smartbrush.count += 1
+                tools.smartbrush.frame_count += 1
                 tools.smartbrush.momentum = min(5, tools.smartbrush.momentum + 2);
                 tools.smartbrush.xy = (x, y)
             if tools.smartbrush.momentum > 0:
@@ -310,16 +311,34 @@ def do_rendering(ctx) -> None:
                     update_subtexture_3d(ctx.textures["mask"], result[0], result[1])
                 tools.smartbrush.momentum = max(0, tools.smartbrush.momentum - 1)
 
-        if depth != 1.0 and tools.polygon.clicking and tools.polygon.enabled:
-            tools.polygon.points.extend((texcoord.x - 0.5, texcoord.y - 0.5, texcoord.z - 0.5))
-            update_mesh_buffer(ctx.buffers["polygon"], tools.polygon.points)
-            update_mesh_buffer(ctx.buffers["markers"], tools.polygon.points)
-            tools.polygon.clicking = False
+        if depth != 1.0 and tools.polygon.enabled:
+            if tools.polygon.clicking:
+                # First, check if an existing polygon vertex is close to cursor
+                radius = 3.5e-4 * ctx.settings.fov_degrees  # Search radius
+                closest = polygon_tool_find_closest(tools.polygon, texcoord - 0.5, radius)
+                if len(tools.polygon.points) and closest >= 0:
+                    # If an existing vertex was found, select it for manipulation
+                    tools.polygon.selected = closest
+                else:
+                    # Otherwise, add a new polygon vertex at the cursor location
+                    tools.polygon.selected = len(tools.polygon.points)
+                    tools.polygon.points.extend(texcoord - 0.5)
+                    print(tools.polygon.points[0:3])
+                tools.polygon.clicking = False
+            if tools.polygon.selected >= 0:
+                # Add a few frames delay to the manipulation
+                tools.polygon.frame_count += 1
+                if tools.polygon.frame_count > 8:
+                    # Move selected polygon vertex to cursor location
+                    offset = tools.polygon.selected
+                    tools.polygon.points[offset:offset + 3] = (texcoord - 0.5).to_tuple()
+                update_mesh_buffer(ctx.buffers["polygon"], tools.polygon.points)
+                update_mesh_buffer(ctx.buffers["markers"], tools.polygon.points)
 
         if depth != 1.0 and tools.livewire.enabled:
             clicking = False
             if tools.livewire.clicking:
-                tools.livewire.markers.extend((texcoord.x - 0.5, texcoord.y - 0.5, texcoord.z - 0.5))
+                tools.livewire.markers.extend(texcoord - 0.5)
                 update_mesh_buffer(ctx.buffers["markers"], tools.livewire.markers)
                 livewire_tool_update_graph(tools.livewire, ctx.volume, texcoord, level_range)
                 tools.livewire.clicking = False
@@ -475,7 +494,7 @@ def show_input_guide(ctx) -> None:
 
     flags = (imgui.WINDOW_NO_RESIZE|imgui.WINDOW_NO_COLLAPSE)
     _, ctx.settings.show_input_guide = imgui.begin("Quick reference", closable=True, flags=flags)
-    imgui.text("Left mouse: Paint/draw")
+    imgui.text("Left mouse: Paint/draw/grab")
     imgui.text("Right mouse: Rotate view")
     imgui.text("Middle mouse: Pan view")
     imgui.text("Scroll: Zoom view")
@@ -625,10 +644,12 @@ def mouse_button_callback(window, button, action, mods):
         ctx.panning.panning = (action == glfw.PRESS)
     if button == glfw.MOUSE_BUTTON_LEFT:
         tools.brush.painting = (action == glfw.PRESS)
-        tools.brush.count = 0
+        tools.brush.frame_count = 0
         tools.smartbrush.painting = (action == glfw.PRESS)
-        tools.smartbrush.count = 0
+        tools.smartbrush.frame_count = 0
         tools.polygon.clicking = (action == glfw.PRESS)
+        tools.polygon.selected = -1
+        tools.polygon.frame_count = 0
         tools.livewire.clicking = (action == glfw.PRESS)
 
 

@@ -1,5 +1,6 @@
 import numpy as np
 
+
 class MPR:
     def __init__(self):
         self.planes = [0.0, 0.0, 0.0]
@@ -10,7 +11,7 @@ class MPR:
 
 
 def snap_mpr_to_grid(volume, mpr_planes):
-    """ Snap MPR planes to voxel centers """
+    """Snap MPR planes to voxel centers"""
     x = (mpr_planes[0] + 0.5) * volume.shape[2]
     y = (mpr_planes[1] + 0.5) * volume.shape[1]
     z = (mpr_planes[2] + 0.5) * volume.shape[0]

@@ -8,7 +8,7 @@ import time
 
 
 def load_dicom(filename):
-    """ Load volume stored in DICOM format. """
+    """Load volume stored in DICOM format."""
     volume = None
     header = {}
 
@@ -37,15 +37,15 @@ def load_dicom(filename):
         dim = header["dimensions"][::-1]  # OBS! Shape should be (D,H,W)
         volume = np.zeros(dim, dtype=np.int16)
         for i in range(0, len(slices)):
-            volume[i,:,:] = slices[i].pixel_array
-            volume[i,:,:] += np.int16(slices[i].RescaleIntercept)
+            volume[i, :, :] = slices[i].pixel_array
+            volume[i, :, :] += np.int16(slices[i].RescaleIntercept)
     else:
         assert False, "Single slice DICOM not supported"
     return volume, header
 
 
 def _compute_affine_transform(slices, sx, sy, sz):
-    """ Compute affine transform matrix from slice metadata and estimated
+    """Compute affine transform matrix from slice metadata and estimated
     voxel spacing
     """
     orient = np.array(slices[0].ImageOrientationPatient)
@@ -66,7 +66,7 @@ def _compute_affine_transform(slices, sx, sy, sz):
 
 
 def _compute_output_shape(volume, header):
-    """ Compute output shape for affine transform
+    """Compute output shape for affine transform
 
     Right now, this just doubles the number of slices, so the affine transform
     itself is not used in the calculations
@@ -78,7 +78,7 @@ def _compute_output_shape(volume, header):
 
 
 def resample_volume(volume, header):
-    """ Resample input volume that has affine transform stored in header
+    """Resample input volume that has affine transform stored in header
 
     This also doubles the number of slices in the resampled volumed,
     and resets its affine transform to the identity matrix
@@ -92,7 +92,8 @@ def resample_volume(volume, header):
     matrix = np.array(header["transform"])
 
     output_shape = _compute_output_shape(volume, header)
-    matrix[0] *= 0.5; sz *= 0.5
+    matrix[0] *= 0.5
+    sz *= 0.5
     center = np.array(volume.shape) * 0.5
     center_output = np.array(output_shape) * 0.5
     offset = center - center_output.dot(matrix)
@@ -107,7 +108,8 @@ def resample_volume(volume, header):
     print("Resampling volume...")
     tic = time.time()
     volume_output = sp.ndimage.interpolation.affine_transform(
-        volume, matrix.T, offset, output_shape, order=2, cval=0.0, prefilter=False)
+        volume, matrix.T, offset, output_shape, order=2, cval=0.0, prefilter=False
+    )
     print("Done (elapsed time: %.2f s)" % (time.time() - tic))
 
     return volume_output, header_output

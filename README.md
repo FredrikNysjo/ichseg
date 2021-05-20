@@ -39,6 +39,14 @@ TODO.
 
 TODO.
 
-## TODO
+## Other notes
 
-- [ ] Add features list
+### Code style
+
+This project uses the [Black code style](https://black.readthedocs.io/en/stable/the_black_code_style/current_style.html), with the exception of line length, which is set to 100 instead of the default 88 characters. For automatic formatting, the [black code formatter](https://pypi.org/project/black/) can be installed via pip,
+
+    pip install black
+
+and then applied to a source file like this:
+
+    black --line-length=100 sourcefile.py

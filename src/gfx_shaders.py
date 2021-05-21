@@ -105,7 +105,7 @@ void main()
     mask_grad.y += step(0.5, texture(u_mask, p + dFdy(p) + 0.5).r);
     mask_grad.y -= step(0.5, texture(u_mask, p - dFdy(p) + 0.5).r);
 
-    vec4 output_color = vec4(intensity[0]);
+    vec4 output_color = vec4(clamp(intensity[0], 0.0, 1.0));
 
     // Draw segmentation mask
     vec3 label_color = hsv2rgb(fract(u_label * 0.618034), 0.5, 1.0);
@@ -115,7 +115,8 @@ void main()
     if (bool(u_show_mask) && bool(u_show_mpr)) {
         float outline = clamp(length(mask_grad), 0.0, 1.0);
         outline *= 1.0 - step(0.05, max(length(dFdx(p)), length(dFdy(p))));
-        output_color.rgb = mix(output_color.rgb, label_color, mix(intensity[1], outline, 0.7));
+        float alpha = max(0.5 * intensity[1], outline);
+        output_color.rgb = mix(output_color.rgb, label_color, alpha);
     }
 
     // Draw brush shape (as white highlight)

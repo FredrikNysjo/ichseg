@@ -112,29 +112,11 @@ def create_texture_3d(image, filter_mode=gl.GL_LINEAR):
     gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 1)
     if image.dtype == np.uint8:
         gl.glTexImage3D(
-            gl.GL_TEXTURE_3D,
-            0,
-            gl.GL_R8,
-            w,
-            h,
-            d,
-            0,
-            gl.GL_RED,
-            gl.GL_UNSIGNED_BYTE,
-            image,
+            gl.GL_TEXTURE_3D, 0, gl.GL_R8, w, h, d, 0, gl.GL_RED, gl.GL_UNSIGNED_BYTE, image
         )
     elif image.dtype == np.int16:
         gl.glTexImage3D(
-            gl.GL_TEXTURE_3D,
-            0,
-            gl.GL_R16_SNORM,
-            w,
-            h,
-            d,
-            0,
-            gl.GL_RED,
-            gl.GL_SHORT,
-            image,
+            gl.GL_TEXTURE_3D, 0, gl.GL_R16_SNORM, w, h, d, 0, gl.GL_RED, gl.GL_SHORT, image
         )
     elif image.dtype == np.float32:
         gl.glTexImage3D(gl.GL_TEXTURE_3D, 0, gl.GL_R32F, w, h, d, 0, gl.GL_RED, gl.GL_FLOAT, image)
@@ -152,29 +134,11 @@ def update_texture_3d(texture, image):
     gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 1)
     if image.dtype == np.uint8:
         gl.glTexImage3D(
-            gl.GL_TEXTURE_3D,
-            0,
-            gl.GL_R8,
-            w,
-            h,
-            d,
-            0,
-            gl.GL_RED,
-            gl.GL_UNSIGNED_BYTE,
-            image,
+            gl.GL_TEXTURE_3D, 0, gl.GL_R8, w, h, d, 0, gl.GL_RED, gl.GL_UNSIGNED_BYTE, image
         )
     elif image.dtype == np.int16:
         gl.glTexImage3D(
-            gl.GL_TEXTURE_3D,
-            0,
-            gl.GL_R16_SNORM,
-            w,
-            h,
-            d,
-            0,
-            gl.GL_RED,
-            gl.GL_SHORT,
-            image,
+            gl.GL_TEXTURE_3D, 0, gl.GL_R16_SNORM, w, h, d, 0, gl.GL_RED, gl.GL_SHORT, image
         )
     elif image.dtype == np.float32:
         gl.glTexImage3D(gl.GL_TEXTURE_3D, 0, gl.GL_R32F, w, h, d, 0, gl.GL_RED, gl.GL_FLOAT, image)
@@ -194,17 +158,7 @@ def update_subtexture_3d(texture, subimage, offset):
     gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 1)
     if subimage.dtype == np.uint8:
         gl.glTexSubImage3D(
-            gl.GL_TEXTURE_3D,
-            0,
-            x,
-            y,
-            z,
-            w,
-            h,
-            d,
-            gl.GL_RED,
-            gl.GL_UNSIGNED_BYTE,
-            subimage,
+            gl.GL_TEXTURE_3D, 0, x, y, z, w, h, d, gl.GL_RED, gl.GL_UNSIGNED_BYTE, subimage
         )
     elif subimage.dtype == np.int16:
         gl.glTexSubImage3D(gl.GL_TEXTURE_3D, 0, x, y, z, w, h, d, gl.GL_RED, gl.GL_SHORT, subimage)

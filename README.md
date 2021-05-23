@@ -1,43 +1,39 @@
 # ichseg
 
-Tool for visualizing and segmenting intracranial hemmorhages from CT volume data
+An interactive tool and GUI for segmenting and annotating volumes stored in DICOM or VTK-format
 
 ## Example screenshots
 
 ![Screenshot](screenshot.png?raw=true "Screenshot")
 
-## System requirements
+## General requirements
 
-- A GPU supporting at least OpenGL 4.1
+- Hardware: A GPU supporting at least OpenGL 4.1
+- OS: Windows 10 or Ubuntu 18.04+ (not tested on macOS)
 
-## Installing dependencies on Linux
+## Python installation (via Anaconda and pip):
 
-1. Install Anaconda (Miniconda) package manager:
+1. Install the Anaconda (Miniconda) package manager for Python 3.8 from [here](https://docs.conda.io/en/latest/miniconda.html). On Linux, you can also install it like this:
 ```
     curl -O https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh  
     sh Miniconda3-latest-Linux-x86_64.sh
 ```
-2. Activate the conda environment:
+2. Create a new virtual environment (ichseg) for the application, from the terminal or Anaconda command line:
 ```
-    conda activate
+    conda create --name ichseg python=3.8
 ```
-3. Install required Python dependencies:
+3. Activate the virtual environment and install the required Python dependendecies (via pip):
 ```
-    conda install numpy scipy numba
-    pip install PyOpenGL PyOpenGL_accelerate glfw imgui[glfw] pyglm Pil-Lite   
-    pip install pylibjpeg pylibjpeg-libjpeg pydicom
+    conda activate ichseg
+    pip install -r requirements.txt
 ```
-## Installing dependencies on Windows
-
-TODO.
-
-## Installing dependencies on macOS
-
-TODO.
 
 ## Basic usage
 
-TODO.
+To run the GUI in the virtual environment from the terminal or Anaconda command line:
+
+    conda activate ichseg
+    python src/main.py
 
 ## Other notes
 
@@ -50,3 +46,7 @@ This project uses the [Black code style](https://black.readthedocs.io/en/stable/
 and then applied to a source file like this:
 
     black --line-length=100 sourcefile.py
+
+## License
+
+The code is provided under the MIT license (see LICENSE.md).

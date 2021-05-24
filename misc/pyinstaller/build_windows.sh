@@ -1,7 +1,9 @@
 #!/bin/bash
 
-rm -rf build/ dist/ main.spec &&
-pyinstaller.exe --onedir --windowed --runtime-hook=./misc/pyinstaller/hook.py src/main.py &&
+pyinstaller.exe --noconfirm --onedir --console --runtime-hook=./misc/pyinstaller/hook.py src/main.py &&
+mv dist/main/main.exe main-cli.exe &&
+pyinstaller.exe --noconfirm --onedir --windowed --runtime-hook=./misc/pyinstaller/hook.py src/main.py &&
+mv main-cli.exe dist/main/ &&
 
 mkdir dist/main/numpy/.libs &&
 mkdir dist/main/scipy/.libs &&

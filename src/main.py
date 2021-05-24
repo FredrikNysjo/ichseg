@@ -704,6 +704,7 @@ def cursor_pos_callback(window, x, y):
 def scroll_callback(window, x, y):
     ctx = glfw.get_window_user_pointer(window)
     if imgui.get_io().want_capture_mouse:
+        ctx.imgui_glfw.scroll_callback(window, x, y)
         return
 
     if ctx.mpr.scrolling:

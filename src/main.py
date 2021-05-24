@@ -682,14 +682,18 @@ def mouse_button_callback(window, button, action, mods):
         ctx.panning.center = glm.vec2(x, y)
         ctx.panning.panning = action == glfw.PRESS
     if button == glfw.MOUSE_BUTTON_LEFT:
-        tools.brush.painting = action == glfw.PRESS
-        tools.brush.frame_count = 0
-        tools.smartbrush.painting = action == glfw.PRESS
-        tools.smartbrush.frame_count = 0
-        tools.polygon.clicking = action == glfw.PRESS
-        tools.polygon.selected = -1
-        tools.polygon.frame_count = 0
-        tools.livewire.clicking = action == glfw.PRESS
+        if tools.brush.enabled:
+            tools.brush.painting = action == glfw.PRESS
+            tools.brush.frame_count = 0
+        if tools.smartbrush.enabled:
+            tools.smartbrush.painting = action == glfw.PRESS
+            tools.smartbrush.frame_count = 0
+        if tools.polygon.enabled:
+            tools.polygon.clicking = action == glfw.PRESS
+            tools.polygon.selected = -1
+            tools.polygon.frame_count = 0
+        if tools.livewire.enabled:
+            tools.livewire.clicking = action == glfw.PRESS
 
 
 def cursor_pos_callback(window, x, y):

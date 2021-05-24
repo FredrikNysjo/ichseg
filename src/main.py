@@ -17,7 +17,7 @@ import tkinter.messagebox
 
 import os
 import copy
-import subprocess
+import time
 
 
 class Settings:
@@ -62,6 +62,7 @@ class CommandManager:
     def __init__(self):
         self.stack = []
         self.max_undo_length = 8
+        self.dirty = True
 
 
 class Context:
@@ -90,17 +91,20 @@ def cmds_push_apply(cmds, cmd):
     if len(cmds.stack) >= cmds.max_undo_length:
         cmds.stack.pop(0)  # Make space on the stack
     cmds.stack.append(cmd.apply())
+    cmds.dirty = True
 
 
 def cmds_pop_undo(cmds):
     """Pop command from the manager's undo stack and undo it"""
     if len(cmds.stack):
         cmds.stack.pop().undo()
+    cmds.dirty = True
 
 
 def cmds_clear_stack(cmds):
     """Clear all commands from the manager's undo stack"""
     cmds.stack = []
+    cmds.dirty = True
 
 
 def load_segmentation_mask(ct_volume, dirname):
@@ -493,7 +497,7 @@ def show_menubar(ctx) -> None:
 
 def show_volume_stats(ctx) -> None:
     sf = imgui.get_io().font_global_scale
-    imgui.set_next_window_size(250 * sf, 140 * sf)
+    imgui.set_next_window_size(250 * sf, 120 * sf)
     imgui.set_next_window_position(ctx.width - 260 * sf, 18 * sf)
 
     flags = imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_COLLAPSE
@@ -503,8 +507,12 @@ def show_volume_stats(ctx) -> None:
     imgui.text("Scalar type: %s" % str(ctx.volume.dtype))
     imgui.text("Mask type: %s" % str(ctx.mask.dtype))
     imgui.text("Segmented volume (ml): %.2f" % (ctx.segmented_volume_ml))
-    if imgui.button("Update"):
+    if ctx.cmds.dirty and not tools_is_painting_any(ctx.tools):
+        print("Recalculating volume...")
+        tic = time.time()
         ctx.segmented_volume_ml = np.sum(ctx.mask > 127) * np.prod(ctx.header["spacing"]) * 1e-3
+        print("Done (elapsed time: %.2f s)" % (time.time() - tic))
+        ctx.cmds.dirty = False
     imgui.end()
 
 

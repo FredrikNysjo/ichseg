@@ -118,6 +118,11 @@ def tools_set_plane_all(tools, axis) -> None:
     tools_cancel_drawing_all(tools)
 
 
+def tools_is_painting_any(tools):
+    """Check if any of the brush tools are painting"""
+    return tools.brush.painting or tools.smartbrush.painting
+
+
 def brush_tool_apply(tool, image, texcoord, spacing, op=TOOL_OP_ADD):
     """Apply brush tool to input 3D image
 

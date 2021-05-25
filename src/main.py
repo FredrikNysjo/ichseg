@@ -139,6 +139,9 @@ def load_dataset_fromfile(ctx, filename) -> None:
     else:
         ctx.volume, ctx.header = create_dummy_dataset()
     ctx.mask = np.zeros(ctx.volume.shape, dtype=np.uint8)
+    ctx.mpr.minmax_range[0] = np.min(ctx.volume)
+    ctx.mpr.minmax_range[1] = np.max(ctx.volume)
+    mpr_update_level_range(ctx.mpr)
     cmds_clear_stack(ctx.cmds)
 
 
@@ -541,6 +544,7 @@ def show_input_guide(ctx) -> None:
 def show_gui(ctx) -> None:
     """Show ImGui windows"""
     tools = ctx.tools
+    mpr = ctx.mpr
 
     sf = imgui.get_io().font_global_scale
     imgui.set_next_window_size(ctx.sidebar_width, ctx.height - 18 * sf)
@@ -549,7 +553,12 @@ def show_gui(ctx) -> None:
     imgui.begin("Segmentation", flags=(imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_COLLAPSE))
     _, ctx.label = imgui.combo("Label", ctx.label, ctx.classes)
     _, ctx.settings.show_mask = imgui.checkbox("Show segmentation", ctx.settings.show_mask)
-    _, ctx.mpr.level_range = imgui.drag_int2("Level range", *ctx.mpr.level_range, 10, -1000, 3000)
+    clicked, mpr.level_preset = imgui.combo("Level preset", mpr.level_preset, MPR_PRESET_NAMES)
+    if clicked:
+        mpr_update_level_range(mpr)
+    clicked, ctx.mpr.level_range = imgui.drag_int2("Level range", *mpr.level_range, 10)
+    if clicked:
+        mpr.level_preset = MPR_PRESET_NAMES.index("Custom")
     if imgui.collapsing_header("Tools", flags=imgui.TREE_NODE_DEFAULT_OPEN)[0]:
         # Polygon tool settings
         clicked, tools.polygon.enabled = imgui.checkbox("Polygon tool", tools.polygon.enabled)
@@ -611,11 +620,13 @@ def show_gui(ctx) -> None:
     if imgui.collapsing_header("Misc")[0]:
         _, ctx.settings.bg_color1 = imgui.color_edit3("BG color 1", *ctx.settings.bg_color1)
         _, ctx.settings.bg_color2 = imgui.color_edit3("BG color 2", *ctx.settings.bg_color2)
-        _, ctx.mpr.enabled = imgui.checkbox("Show MPR", ctx.mpr.enabled)
-        _, ctx.mpr.show_voxels = imgui.checkbox("Show voxels", ctx.mpr.show_voxels)
+        _, mpr.enabled = imgui.checkbox("Show MPR", mpr.enabled)
+        _, mpr.show_voxels = imgui.checkbox("Show voxels", mpr.show_voxels)
     imgui.end()
+
     if ctx.settings.show_stats:
         show_volume_stats(ctx)
+
     if ctx.settings.show_input_guide:
         show_input_guide(ctx)
 

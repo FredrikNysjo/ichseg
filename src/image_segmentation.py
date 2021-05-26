@@ -142,8 +142,8 @@ def _brush_tool_apply(tool, image, texcoord, spacing, op):
         radius[tool.plane] = 1  # Restrict brush to 2D plane
     lower = center - glm.vec3(radius * (spacing.x / spacing)) * 0.5 + 0.5
     upper = center + glm.vec3(radius * (spacing.x / spacing)) * 0.5 + 0.5
-    lower = glm.ivec3(glm.clamp(lower, glm.vec3(0.0), glm.vec3(w - 1, h - 1, d - 1)))
-    upper = glm.ivec3(glm.clamp(upper, glm.vec3(0.0), glm.vec3(w - 1, h - 1, d - 1)))
+    lower = glm.ivec3(glm.clamp(lower, glm.vec3(0.0), glm.vec3(w, h, d)))
+    upper = glm.ivec3(glm.clamp(upper, glm.vec3(0.0), glm.vec3(w, h, d)))
 
     xx = np.arange(lower.x - center.x + 0.5, upper.x - center.x + 0.5, 1.0)
     yy = np.arange(lower.y - center.y + 0.5, upper.y - center.y + 0.5, 1.0)
@@ -197,8 +197,8 @@ def _smartbrush_tool_apply(tool, image, volume, texcoord, spacing, level_range, 
         radius[tool.plane] = 1  # Restrict brush to 2D plane
     lower = center - glm.vec3(radius * (spacing.x / spacing)) * 0.5 + 0.5
     upper = center + glm.vec3(radius * (spacing.x / spacing)) * 0.5 + 0.5
-    lower = glm.ivec3(glm.clamp(lower, glm.vec3(1.0), glm.vec3(w - 2, h - 2, d - 2)))
-    upper = glm.ivec3(glm.clamp(upper, glm.vec3(1.0), glm.vec3(w - 2, h - 2, d - 2)))
+    lower = glm.ivec3(glm.clamp(lower, glm.vec3(0.0), glm.vec3(w, h, d)))
+    upper = glm.ivec3(glm.clamp(upper, glm.vec3(0.0), glm.vec3(w, h, d)))
 
     xx = np.arange(lower.x - center.x + 0.5, upper.x - center.x + 0.5, 1.0)
     yy = np.arange(lower.y - center.y + 0.5, upper.y - center.y + 0.5, 1.0)

@@ -271,6 +271,7 @@ def do_rendering(ctx) -> None:
         gl.glUniformMatrix4fv(
             gl.glGetUniformLocation(program, "u_mvp"), 1, False, glm.value_ptr(mvp)
         )
+        gl.glUniform1i(gl.glGetUniformLocation(program, "u_label"), 0)
         gl.glDisable(gl.GL_DEPTH_TEST)
         gl.glPointSize(5.0)
         gl.glBindVertexArray(ctx.vaos["polygon"])
@@ -287,6 +288,7 @@ def do_rendering(ctx) -> None:
         gl.glUniformMatrix4fv(
             gl.glGetUniformLocation(program, "u_mvp"), 1, False, glm.value_ptr(mvp)
         )
+        gl.glUniform1i(gl.glGetUniformLocation(program, "u_label"), 0)
         gl.glDisable(gl.GL_DEPTH_TEST)
         gl.glPointSize(5.0)
         gl.glBindVertexArray(ctx.vaos["polygon"])

@@ -135,11 +135,20 @@ polygon_vs = """
 #version 410
 
 uniform mat4 u_mvp;
+uniform int u_label;
 
 layout(location = 0) in vec4 a_position;
+out vec3 v_color;
+
+vec3 hsv2rgb(float h, float s, float v)
+{
+    vec3 k = fract(vec3(5.0, 3.0, 1.0) / 6.0 + h) * 6.0;
+    return v - v * s * clamp(min(k, 4.0 - k), 0.0, 1.0);
+}
 
 void main()
 {
+    v_color = hsv2rgb(fract(u_label * 0.618034), 0.5, 1.0);
     gl_Position = u_mvp * a_position;
 }
 """
@@ -147,11 +156,12 @@ void main()
 polygon_fs = """
 #version 410
 
+in vec3 v_color;
 out vec4 rt_color;
 
 void main()
 {
-    rt_color = vec4(1.0, 0.0, 0.0, 1.0);
+    rt_color = vec4(v_color, 1.0);
 }
 """
 

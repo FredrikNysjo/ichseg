@@ -97,6 +97,29 @@ def update_mesh_buffer(vbo, mesh):
     gl.glBufferData(gl.GL_COPY_WRITE_BUFFER, np.array(mesh, dtype=np.float32), gl.GL_STATIC_DRAW)
 
 
+def create_texture_2d(image, filter_mode=gl.GL_LINEAR):
+    """Create a 2D texture for a volume image. This will also upload
+    the pixel data to the 2D texture.
+    """
+    h, w = image.shape[0:2]
+    texture = gl.glGenTextures(1)
+    gl.glBindTexture(gl.GL_TEXTURE_2D, texture)
+    gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_S, gl.GL_CLAMP_TO_EDGE)
+    gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_T, gl.GL_CLAMP_TO_EDGE)
+    gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, filter_mode)
+    gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MAG_FILTER, filter_mode)
+    gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 1)
+    if image.dtype == np.uint8:
+        gl.glTexImage2D(
+            gl.GL_TEXTURE_2D, 0, gl.GL_RGB8, w, h, 0, gl.GL_RGB, gl.GL_UNSIGNED_BYTE, image
+        )
+    else:
+        assert False, "Image type not supported: " + image.dtype.name
+    gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 4)
+    gl.glBindTexture(gl.GL_TEXTURE_2D, 0)
+    return texture
+
+
 def create_texture_3d(image, filter_mode=gl.GL_LINEAR):
     """Create a 3D texture for a volume image. This will also upload
     the voxel data to the 3D texture.

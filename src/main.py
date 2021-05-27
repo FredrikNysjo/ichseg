@@ -23,12 +23,14 @@ import time
 class Settings:
     def __init__(self):
         self.bg_color1 = [0.9, 0.9, 0.9]
-        self.bg_color2 = [0.0, 0.0, 0.0]
+        self.bg_color2 = [0.1, 0.1, 0.1]
         self.show_mask = True
         self.fov_degrees = 45.0
         self.projection_mode = 1  # 0=orthographic; 1=perspective
         self.show_stats = False
+        self.show_navigator = False
         self.show_input_guide = False
+        self.dark_mode = True
         self.basepath = "/home/fredrik/Desktop/ct-ich-raw/Raw_ct_scans"
 
 
@@ -169,11 +171,19 @@ def do_initialize(ctx) -> None:
     tools = ctx.tools
 
     ctx.classes = ["Label 255", "Label 0 (Clear)"]
-
     load_dataset_fromfile(ctx, "")
+
+    # These images are just placeholders until the code for showing MPR views
+    # in the navigator is implemented
+    axial_view = np.array([0, 0, 255], dtype=np.uint8).reshape((1, 1, 3))
+    sagital_view = np.array([0, 255, 0], dtype=np.uint8).reshape((1, 1, 3))
+    coronal_view = np.array([255, 0, 0], dtype=np.uint8).reshape((1, 1, 3))
 
     ctx.textures["volume"] = create_texture_3d(ctx.volume, filter_mode=gl.GL_LINEAR)
     ctx.textures["mask"] = create_texture_3d(ctx.mask, filter_mode=gl.GL_LINEAR)
+    ctx.textures["axial"] = create_texture_2d(axial_view, filter_mode=gl.GL_LINEAR)
+    ctx.textures["sagital"] = create_texture_2d(sagital_view, filter_mode=gl.GL_LINEAR)
+    ctx.textures["coronal"] = create_texture_2d(coronal_view, filter_mode=gl.GL_LINEAR)
     ctx.vaos["default"] = gl.glGenVertexArrays(1)
     ctx.programs["raycast"] = create_program(
         (raycast_vs, gl.GL_VERTEX_SHADER), (raycast_fs, gl.GL_FRAGMENT_SHADER)
@@ -492,6 +502,8 @@ def show_menubar(ctx) -> None:
     if imgui.begin_menu("Tools"):
         if imgui.menu_item("Volume statistics")[0]:
             ctx.settings.show_stats = not ctx.settings.show_stats
+        if imgui.menu_item("Navigator views")[0]:
+            ctx.settings.show_navigator = not ctx.settings.show_navigator
         imgui.end_menu()
     if imgui.begin_menu("Help"):
         if imgui.menu_item("Quick reference")[0]:
@@ -500,18 +512,41 @@ def show_menubar(ctx) -> None:
     imgui.end_main_menu_bar()
 
 
+def show_navigator(ctx) -> None:
+    sf = imgui.get_io().font_global_scale
+    flags = imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_TITLE_BAR
+    views = ["axial", "sagital", "coronal"]
+    wh = ctx.height / 5.0
+    padding = 8
+
+    imgui.set_next_window_size(wh * sf, (wh * 3 - padding * 2) * sf)
+    imgui.set_next_window_position(0, ctx.height - (wh * 4 - padding) * sf)
+    imgui.set_next_window_bg_alpha(0.8)
+    _, ctx.settings.show_navigator = imgui.begin("Navigator views", flags=flags)
+    for i in range(0, 3):
+        imgui.image(ctx.textures[views[i]], wh - padding * 2, wh - padding * 2)
+        if i < 2:
+            imgui.spacing()
+    imgui.end()
+
+
 def show_volume_stats(ctx) -> None:
     sf = imgui.get_io().font_global_scale
     imgui.set_next_window_size(250 * sf, 120 * sf)
-    imgui.set_next_window_position(ctx.width - 260 * sf, 18 * sf)
+    imgui.set_next_window_position(ctx.width - 250 * sf, 18 * sf)
+    imgui.set_next_window_bg_alpha(0.8)
 
-    flags = imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_COLLAPSE
+    flags = imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_COLLAPSE | imgui.WINDOW_NO_TITLE_BAR
     _, ctx.settings.show_stats = imgui.begin("Volume statistics", closable=True, flags=flags)
+    imgui.text("Volume statistics")
+    imgui.spacing()
+    imgui.indent(5)
     imgui.text("Dimensions (voxels): %d %d %d" % tuple(ctx.header["dimensions"]))
     imgui.text("Spacing (mm): %.2f %.2f %.2f" % tuple(ctx.header["spacing"]))
     imgui.text("Scalar type: %s" % str(ctx.volume.dtype))
     imgui.text("Mask type: %s" % str(ctx.mask.dtype))
     imgui.text("Segmented volume (ml): %.2f" % (ctx.segmented_volume_ml))
+    imgui.unindent(5)
     if ctx.cmds.dirty and not tools_is_painting_any(ctx.tools):
         print("Recalculating volume...")
         tic = time.time()
@@ -524,10 +559,17 @@ def show_volume_stats(ctx) -> None:
 def show_input_guide(ctx) -> None:
     sf = imgui.get_io().font_global_scale
     imgui.set_next_window_size(250 * sf, 240 * sf)
-    imgui.set_next_window_position(10 * sf, 18 * sf)
+    if ctx.settings.show_stats:
+        imgui.set_next_window_position(ctx.width - 250 * sf, (18 + 120) * sf)
+    else:
+        imgui.set_next_window_position(ctx.width - 250 * sf, 18 * sf)
+    imgui.set_next_window_bg_alpha(0.8)
 
-    flags = imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_COLLAPSE
+    flags = imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_COLLAPSE | imgui.WINDOW_NO_TITLE_BAR
     _, ctx.settings.show_input_guide = imgui.begin("Quick reference", closable=True, flags=flags)
+    imgui.text("Quick reference")
+    imgui.spacing()
+    imgui.indent(5)
     imgui.text("Left mouse: Paint/draw/grab")
     imgui.text("Right mouse: Rotate view")
     imgui.text("Middle mouse: Pan view")
@@ -540,97 +582,160 @@ def show_input_guide(ctx) -> None:
     imgui.text("Enter: Close polygon")
     imgui.text("Space: Hide segmentation")
     imgui.text("Ctrl+z: Undo")
+    imgui.unindent(5)
     imgui.end()
 
 
-def show_gui(ctx) -> None:
-    """Show ImGui windows"""
-    tools = ctx.tools
+def show_volume_settings(ctx):
+    """Show widgets for volume settings"""
     mpr = ctx.mpr
-
-    sf = imgui.get_io().font_global_scale
-    imgui.set_next_window_size(ctx.sidebar_width, ctx.height - 18 * sf)
-    imgui.set_next_window_position(ctx.width, 18 * sf)
-
-    imgui.begin("Segmentation", flags=(imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_COLLAPSE))
-    _, ctx.label = imgui.combo("Label", ctx.label, ctx.classes)
-    _, ctx.settings.show_mask = imgui.checkbox("Show segmentation", ctx.settings.show_mask)
     clicked, mpr.level_preset = imgui.combo("Level preset", mpr.level_preset, MPR_PRESET_NAMES)
     if clicked:
         mpr_update_level_range(mpr)
     clicked, ctx.mpr.level_range = imgui.drag_int2("Level range", *mpr.level_range, 10)
     if clicked:
         mpr.level_preset = MPR_PRESET_NAMES.index("Custom")
+
+
+def show_segmentation_settings(ctx):
+    """Show widgets for segmentation settings"""
+    _, ctx.label = imgui.combo("Label", ctx.label, ctx.classes)
+    _, ctx.settings.show_mask = imgui.checkbox("Show segmentation", ctx.settings.show_mask)
+
+
+def show_tools_settings(ctx):
+    """Show widgets for tools settings"""
+    tools = ctx.tools
+
+    # Polygon tool settings
+    clicked, tools.polygon.enabled = imgui.checkbox("Polygon tool", tools.polygon.enabled)
+    if clicked and tools.polygon.enabled:
+        tools_disable_all_except(tools, tools.polygon)
+    if tools.polygon.enabled:
+        imgui.indent(5)
+        _, tools.polygon.antialiasing = imgui.checkbox("Antialiasing", tools.polygon.antialiasing)
+        imgui.unindent(5)
+
+    # Brush tool settings
+    clicked, tools.brush.enabled = imgui.checkbox("Brush tool", tools.brush.enabled)
+    if clicked and tools.brush.enabled:
+        tools_disable_all_except(tools, tools.brush)
+    if tools.brush.enabled:
+        imgui.indent(5)
+        _, tools.brush.mode = imgui.combo("Mode", tools.brush.mode, ["2D", "3D"])
+        _, tools.brush.size = imgui.slider_int("Brush size", tools.brush.size, 1, 80)
+        _, tools.brush.antialiasing = imgui.checkbox("Antialiasing", tools.brush.antialiasing)
+        imgui.unindent(5)
+
+    # Livewire tool settings
+    clicked, tools.livewire.enabled = imgui.checkbox("Livewire tool", tools.livewire.enabled)
+    if clicked and tools.livewire.enabled:
+        tools_disable_all_except(tools, tools.livewire)
+    if tools.livewire.enabled:
+        imgui.indent(5)
+        _, tools.livewire.smoothing = imgui.checkbox("Smoothing enabled", tools.livewire.smoothing)
+        imgui.unindent(5)
+
+    # Smart brush tool settings
+    clicked, tools.smartbrush.enabled = imgui.checkbox("Smartbrush tool", tools.smartbrush.enabled)
+    if clicked and tools.smartbrush.enabled:
+        tools_disable_all_except(tools, tools.smartbrush)
+    if tools.smartbrush.enabled:
+        imgui.indent(5)
+        _, tools.smartbrush.mode = imgui.combo("Mode", tools.smartbrush.mode, ["2D", "3D"])
+        _, tools.smartbrush.size = imgui.slider_int("Brush size", tools.smartbrush.size, 1, 80)
+        _, tools.smartbrush.sensitivity = imgui.slider_float(
+            "Sensitivity", tools.smartbrush.sensitivity, 0.0, 10.0
+        )
+        _, tools.smartbrush.delta_scaling = imgui.slider_float(
+            "Delta scale", tools.smartbrush.delta_scaling, 1.0, 5.0
+        )
+        imgui.unindent(5)
+
+    # Seed painting tool settings
+    clicked, tools.seedpaint.enabled = imgui.checkbox("Seed paint tool", tools.seedpaint.enabled)
+    if clicked and tools.seedpaint.enabled:
+        tools_disable_all_except(tools, tools.seedpaint)
+    if tools.seedpaint.enabled:
+        imgui.indent(5)
+        imgui.text("Not implemented yet (TODO)")
+        imgui.unindent(5)
+
+
+def show_viewing_settings(ctx):
+    """Show widgets for viewing settings"""
+    mpr = ctx.mpr
+    _, mpr.enabled = imgui.checkbox("Show MPR", mpr.enabled)
+    _, mpr.show_voxels = imgui.checkbox("Show voxels", mpr.show_voxels)
+
+
+def show_misc_settings(ctx):
+    """Show widgets for miscelaneous settings"""
+    _, ctx.settings.bg_color1 = imgui.color_edit3("BG color 1", *ctx.settings.bg_color1)
+    _, ctx.settings.bg_color2 = imgui.color_edit3("BG color 2", *ctx.settings.bg_color2)
+    clicked, ctx.settings.dark_mode = imgui.checkbox("Dark mode", ctx.settings.dark_mode)
+    if clicked:
+        set_gui_style(ctx.settings.dark_mode)
+
+
+def show_gui(ctx) -> None:
+    """Show ImGui windows"""
+    sf = imgui.get_io().font_global_scale
+    imgui.set_next_window_size(ctx.sidebar_width, ctx.height - 18 * sf)
+    imgui.set_next_window_position(ctx.width, 18 * sf)
+    flags = imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_COLLAPSE | imgui.WINDOW_NO_TITLE_BAR
+
+    imgui.begin("Segmentation", flags=flags)
+    if imgui.collapsing_header("Volume", flags=imgui.TREE_NODE_DEFAULT_OPEN)[0]:
+        show_volume_settings(ctx)
+        imgui.text("")  # Add some spacing to next settings group
+    if imgui.collapsing_header("Segmentation", flags=imgui.TREE_NODE_DEFAULT_OPEN)[0]:
+        show_segmentation_settings(ctx)
+        imgui.text("")  # Add some spacing to next settings group
     if imgui.collapsing_header("Tools", flags=imgui.TREE_NODE_DEFAULT_OPEN)[0]:
-        # Polygon tool settings
-        clicked, tools.polygon.enabled = imgui.checkbox("Polygon tool", tools.polygon.enabled)
-        if clicked and tools.polygon.enabled:
-            tools_disable_all_except(tools, tools.polygon)
-        if tools.polygon.enabled:
-            imgui.indent(5)
-            _, tools.polygon.antialiasing = imgui.checkbox(
-                "Antialiasing", tools.polygon.antialiasing
-            )
-            imgui.unindent(5)
-        # Brush tool settings
-        clicked, tools.brush.enabled = imgui.checkbox("Brush tool", tools.brush.enabled)
-        if clicked and tools.brush.enabled:
-            tools_disable_all_except(tools, tools.brush)
-        if tools.brush.enabled:
-            imgui.indent(5)
-            _, tools.brush.mode = imgui.combo("Mode", tools.brush.mode, ["2D", "3D"])
-            _, tools.brush.size = imgui.slider_int("Brush size", tools.brush.size, 1, 80)
-            _, tools.brush.antialiasing = imgui.checkbox("Antialiasing", tools.brush.antialiasing)
-            imgui.unindent(5)
-        # Livewire tool settings
-        clicked, tools.livewire.enabled = imgui.checkbox("Livewire tool", tools.livewire.enabled)
-        if clicked and tools.livewire.enabled:
-            tools_disable_all_except(tools, tools.livewire)
-        if tools.livewire.enabled:
-            imgui.indent(5)
-            _, tools.livewire.smoothing = imgui.checkbox(
-                "Smoothing enabled", tools.livewire.smoothing
-            )
-            imgui.unindent(5)
-        # Smart brush tool settings
-        clicked, tools.smartbrush.enabled = imgui.checkbox(
-            "Smartbrush tool", tools.smartbrush.enabled
-        )
-        if clicked and tools.smartbrush.enabled:
-            tools_disable_all_except(tools, tools.smartbrush)
-        if tools.smartbrush.enabled:
-            imgui.indent(5)
-            _, tools.smartbrush.mode = imgui.combo("Mode", tools.smartbrush.mode, ["2D", "3D"])
-            _, tools.smartbrush.size = imgui.slider_int("Brush size", tools.smartbrush.size, 1, 80)
-            _, tools.smartbrush.sensitivity = imgui.slider_float(
-                "Sensitivity", tools.smartbrush.sensitivity, 0.0, 10.0
-            )
-            _, tools.smartbrush.delta_scaling = imgui.slider_float(
-                "Delta scale", tools.smartbrush.delta_scaling, 1.0, 5.0
-            )
-            imgui.unindent(5)
-        # Seed painting tool settings
-        clicked, tools.seedpaint.enabled = imgui.checkbox(
-            "Seed paint tool", tools.seedpaint.enabled
-        )
-        if clicked and tools.seedpaint.enabled:
-            tools_disable_all_except(tools, tools.seedpaint)
-        if tools.seedpaint.enabled:
-            imgui.indent(5)
-            imgui.text("Not implemented yet (TODO)")
-            imgui.unindent(5)
+        show_tools_settings(ctx)
+        imgui.text("")  # Add some spacing to next settings group
+    if imgui.collapsing_header("Viewing")[0]:
+        show_viewing_settings(ctx)
+        imgui.text("")  # Add some spacing to next settings group
     if imgui.collapsing_header("Misc")[0]:
-        _, ctx.settings.bg_color1 = imgui.color_edit3("BG color 1", *ctx.settings.bg_color1)
-        _, ctx.settings.bg_color2 = imgui.color_edit3("BG color 2", *ctx.settings.bg_color2)
-        _, mpr.enabled = imgui.checkbox("Show MPR", mpr.enabled)
-        _, mpr.show_voxels = imgui.checkbox("Show voxels", mpr.show_voxels)
+        show_misc_settings(ctx)
     imgui.end()
 
     if ctx.settings.show_stats:
         show_volume_stats(ctx)
-
     if ctx.settings.show_input_guide:
         show_input_guide(ctx)
+    if ctx.settings.show_navigator:
+        show_navigator(ctx)
+
+
+def set_style_color_rgb(idx, r, g, b):
+    """Update global ImGui style color without changing alpha"""
+    style = imgui.get_style()
+    tmp = style.colors[idx]
+    style.colors[idx] = imgui.Vec4(r, g, b, tmp.w)
+
+
+def set_gui_style(dark_mode=False):
+    """Apply global ImGui style settings for light or dark theme"""
+    if dark_mode:
+        imgui.style_colors_dark()
+    else:
+        imgui.style_colors_light()
+    style = imgui.get_style()
+    style.window_rounding = 0.0
+    set_style_color_rgb(imgui.COLOR_HEADER, 0.5, 0.5, 0.5)
+    set_style_color_rgb(imgui.COLOR_HEADER_ACTIVE, 0.5, 0.5, 0.5)
+    set_style_color_rgb(imgui.COLOR_HEADER_HOVERED, 0.5, 0.5, 0.5)
+    set_style_color_rgb(imgui.COLOR_BUTTON, 0.5, 0.5, 0.5)
+    set_style_color_rgb(imgui.COLOR_BUTTON_ACTIVE, 0.5, 0.5, 0.5)
+    set_style_color_rgb(imgui.COLOR_BUTTON_HOVERED, 0.5, 0.5, 0.5)
+    set_style_color_rgb(imgui.COLOR_FRAME_BACKGROUND_ACTIVE, 0.5, 0.5, 0.5)
+    set_style_color_rgb(imgui.COLOR_FRAME_BACKGROUND_HOVERED, 0.5, 0.5, 0.5)
+    if dark_mode:
+        set_style_color_rgb(imgui.COLOR_WINDOW_BACKGROUND, 0.18, 0.18, 0.18)
+        set_style_color_rgb(imgui.COLOR_FRAME_BACKGROUND, 0.5, 0.5, 0.5)
 
 
 def char_callback(window, char):
@@ -757,7 +862,7 @@ def main():
     glfw.window_hint(glfw.CONTEXT_VERSION_MINOR, 1)
     glfw.window_hint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
     glfw.window_hint(glfw.OPENGL_FORWARD_COMPAT, gl.GL_TRUE)
-    ctx.window = glfw.create_window(ctx.width, ctx.height, "ICH segmentation", None, None)
+    ctx.window = glfw.create_window(ctx.width, ctx.height, "ichseg", None, None)
     glfw.set_window_user_pointer(ctx.window, ctx)
     glfw.set_window_size_callback(ctx.window, resize_callback)
     glfw.set_char_callback(ctx.window, char_callback)
@@ -770,8 +875,7 @@ def main():
 
     # Initialize ImGui
     imgui.create_context()
-    imgui.style_colors_light()
-    # Comment out for default dark theme
+    set_gui_style(ctx.settings.dark_mode)
     ctx.imgui_glfw = GlfwRenderer(ctx.window, False)
 
     # This should fix GUI-scaling for high-DPI screens:

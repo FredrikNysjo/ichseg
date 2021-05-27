@@ -176,8 +176,8 @@ def do_initialize(ctx) -> None:
     # These images are just placeholders until the code for showing MPR views
     # in the navigator is implemented
     axial_view = np.array([0, 0, 255], dtype=np.uint8).reshape((1, 1, 3))
-    sagital_view = np.array([0, 255, 0], dtype=np.uint8).reshape((1, 1, 3))
-    coronal_view = np.array([255, 0, 0], dtype=np.uint8).reshape((1, 1, 3))
+    sagital_view = np.array([255, 0, 0], dtype=np.uint8).reshape((1, 1, 3))
+    coronal_view = np.array([0, 255, 0], dtype=np.uint8).reshape((1, 1, 3))
 
     ctx.textures["volume"] = create_texture_3d(ctx.volume, filter_mode=gl.GL_LINEAR)
     ctx.textures["mask"] = create_texture_3d(ctx.mask, filter_mode=gl.GL_LINEAR)
@@ -513,9 +513,11 @@ def show_menubar(ctx) -> None:
 
 
 def show_navigator(ctx) -> None:
+    """Show a navigator window with axial, coronal, and sagital views"""
     sf = imgui.get_io().font_global_scale
     flags = imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_TITLE_BAR
-    views = ["axial", "sagital", "coronal"]
+    views = ["axial", "coronal", "sagital"]
+    planes = [MPR_PLANE_Z, MPR_PLANE_Y, MPR_PLANE_X]
     wh = ctx.height / 5.0
     padding = 8
 
@@ -525,6 +527,23 @@ def show_navigator(ctx) -> None:
     _, ctx.settings.show_navigator = imgui.begin("Navigator views", flags=flags)
     for i in range(0, 3):
         imgui.image(ctx.textures[views[i]], wh - padding * 2, wh - padding * 2)
+        clicked = imgui.is_item_clicked()
+        hovered = imgui.is_item_hovered()
+        scrolling = imgui.get_io().mouse_wheel
+        if views[i] == "axial" and clicked:
+            ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(0, 0, 0)))
+            tools_set_plane_all(ctx.tools, planes[i])
+        if views[i] == "coronal" and clicked:
+            ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(-90, 180, 0)))
+            tools_set_plane_all(ctx.tools, planes[i])
+        if views[i] == "sagital" and clicked:
+            ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(-90, 90, 0)))
+            tools_set_plane_all(ctx.tools, planes[i])
+        if hovered and scrolling:
+            # This implements a form of quick-scroll when the user scrolls
+            # over the miniature view in the navigator
+            steps = max(1.0, ctx.volume.shape[i] / 25.0)
+            mpr_scroll_by_axis(ctx.mpr, ctx.volume, planes[i], scrolling * steps)
         if i < 2:
             imgui.spacing()
     imgui.end()
@@ -823,24 +842,21 @@ def cursor_pos_callback(window, x, y):
     ctx.panning.move(x, y)
 
 
-def scroll_callback(window, x, y):
+def scroll_callback(window, xoffset, yoffset):
     ctx = glfw.get_window_user_pointer(window)
     if imgui.get_io().want_capture_mouse:
-        ctx.imgui_glfw.scroll_callback(window, x, y)
+        ctx.imgui_glfw.scroll_callback(window, xoffset, yoffset)
         return
 
     if ctx.mpr.scrolling:
-        view_dir = glm.vec3(glm.inverse(glm.mat4_cast(ctx.trackball.quat))[2])
-        for i in range(0, 3):
-            if abs(view_dir[i]) == max(abs(view_dir.x), max(abs(view_dir.y), abs(view_dir.z))):
-                # Scroll by axis and step size calculated from volume size
-                delta = 1.0 / ctx.volume.shape[2 - i]
-                step = glm.sign(view_dir[i]) * delta
-                ctx.mpr.planes[i] = max(-0.4999, min(0.4999, ctx.mpr.planes[i] + step * y))
-        # Prevent user from continuing, e.g., a polygon on another plane
+        ray_dir = glm.vec3(glm.inverse(glm.mat4_cast(ctx.trackball.quat))[2])
+        mpr_scroll_by_ray(ctx.mpr, ctx.volume, ray_dir, yoffset)
+        # Cancel all drawing in case the user was drawing a polygon or livewire
+        # on the MPR plane while scrolling
         tools_cancel_drawing_all(ctx.tools)
     else:
-        ctx.settings.fov_degrees = max(5.0, min(90.0, ctx.settings.fov_degrees + 2.0 * y))
+        ctx.settings.fov_degrees += 2.0 * yoffset
+        ctx.settings.fov_degrees = max(5.0, min(90.0, ctx.settings.fov_degrees))
 
 
 def resize_callback(window, w, h):

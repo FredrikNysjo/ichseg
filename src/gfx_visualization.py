@@ -26,6 +26,25 @@ def mpr_update_level_range(mpr):
         mpr.level_range = [v for v in preset_range]
 
 
+def mpr_scroll_by_ray(mpr, volume, ray_dir, steps):
+    """Scroll MPR a number of positive or negative steps along axis determined
+    by the largest absolute component of the ray direction
+    """
+    for axis in range(0, 3):
+        if abs(ray_dir[axis]) == max([abs(v) for v in ray_dir]):
+            steps_new = steps * np.sign(ray_dir[axis])
+            mpr_scroll_by_axis(mpr, volume, axis, steps_new)
+
+
+def mpr_scroll_by_axis(mpr, volume, axis, steps):
+    """Scroll MPR a number of positive or negative steps along axis specified
+    by index in range 0-2
+    """
+    assert (axis >= 0 and axis <= 2)
+    delta = steps / float(volume.shape[2 - axis])
+    mpr.planes[axis] = max(-0.4999, min(0.4999, mpr.planes[axis] + delta))
+
+
 def snap_mpr_to_grid(volume, mpr_planes):
     """Snap MPR planes to voxel centers"""
     x = (mpr_planes[0] + 0.5) * volume.shape[2]

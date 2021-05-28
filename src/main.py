@@ -861,8 +861,8 @@ def scroll_callback(window, xoffset, yoffset):
 
 def resize_callback(window, w, h):
     ctx = glfw.get_window_user_pointer(window)
-    ctx.width = w - ctx.sidebar_width
-    ctx.height = h
+    ctx.width = max(1, w - ctx.sidebar_width)
+    ctx.height = max(1, h)
     ctx.aspect = float(ctx.width) / ctx.height
     gl.glViewport(0, 0, ctx.width, ctx.height)
 

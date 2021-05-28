@@ -1,9 +1,13 @@
-from gfx_shaders import *
-from gfx_utils import *
-from gfx_visualization import *
-from image_segmentation import *
-from image_utils import *
-from image_dicom import *
+import cmd_manager
+import gfx_mpr
+import gfx_manager
+import gfx_shaders
+import gfx_utils
+import image_dicom
+import image_manager
+import image_utils
+from tool_common import *
+import tool_manager
 
 import glfw
 import OpenGL.GL as gl
@@ -31,7 +35,27 @@ class Settings:
         self.show_navigator = False
         self.show_input_guide = False
         self.dark_mode = True
-        self.basepath = "/home/fredrik/Desktop/ct-ich-raw/Raw_ct_scans"
+        self.basepath = ""
+
+
+class Context:
+    def __init__(self):
+        self.window = None
+        self.width = 1000
+        self.height = 700
+        self.sidebar_width = 290
+        self.programs = {}
+        self.vaos = {}
+        self.buffers = {}
+        self.textures = {}
+
+        self.settings = Settings()
+        self.trackball = gfx_utils.Trackball()
+        self.panning = gfx_utils.Panning()
+        self.mpr = gfx_mpr.MPR()
+        self.tools = tool_manager.ToolManager()
+        self.cmds = cmd_manager.CmdManager()
+        self.segmented_volume_ml = 0.0
 
 
 class UpdateVolumeCmd:
@@ -48,7 +72,7 @@ class UpdateVolumeCmd:
         self._prev_subimage = np.copy(self.volume[z : z + d, y : y + h, x : x + w])
         self.volume[z : z + d, y : y + h, x : x + w] = self.subimage
         if self.texture:
-            update_subtexture_3d(self.texture, self.subimage, self.offset)
+            gfx_utils.update_subtexture_3d(self.texture, self.subimage, self.offset)
         return self
 
     def undo(self):
@@ -56,57 +80,8 @@ class UpdateVolumeCmd:
         d, h, w = self.subimage.shape
         self.volume[z : z + d, y : y + h, x : x + w] = self._prev_subimage
         if self.texture:
-            update_subtexture_3d(self.texture, self._prev_subimage, self.offset)
+            gfx_utils.update_subtexture_3d(self.texture, self._prev_subimage, self.offset)
         return self
-
-
-class CommandManager:
-    def __init__(self):
-        self.stack = []
-        self.max_undo_length = 8
-        self.dirty = True
-
-
-class Context:
-    def __init__(self):
-        self.window = None
-        self.width = 1000
-        self.height = 700
-        self.aspect = 1000.0 / 700.0
-        self.sidebar_width = 290
-        self.programs = {}
-        self.vaos = {}
-        self.buffers = {}
-        self.textures = {}
-
-        self.settings = Settings()
-        self.trackball = Trackball()
-        self.panning = Panning()
-        self.mpr = MPR()
-        self.tools = ToolManager()
-        self.segmented_volume_ml = 0.0
-        self.cmds = CommandManager()
-
-
-def cmds_push_apply(cmds, cmd):
-    """Apply command and push it onto the manager's undo stack"""
-    if len(cmds.stack) >= cmds.max_undo_length:
-        cmds.stack.pop(0)  # Make space on the stack
-    cmds.stack.append(cmd.apply())
-    cmds.dirty = True
-
-
-def cmds_pop_undo(cmds):
-    """Pop command from the manager's undo stack and undo it"""
-    if len(cmds.stack):
-        cmds.stack.pop().undo()
-    cmds.dirty = True
-
-
-def cmds_clear_stack(cmds):
-    """Clear all commands from the manager's undo stack"""
-    cmds.stack = []
-    cmds.dirty = True
 
 
 def load_segmentation_mask(ct_volume, dirname):
@@ -118,7 +93,7 @@ def load_segmentation_mask(ct_volume, dirname):
         for filename in os.listdir(dirname):
             if not filename.lower().count(".jpg"):
                 continue
-            image = load_image(os.path.join(dirname, filename)).reshape(512, 512)
+            image = image_utils.load_image(os.path.join(dirname, filename)).reshape(512, 512)
             image = image[::-1, :]  # Flip along Y-axis
             slice_pos = int(filename.split("_")[0]) - 1  # Indices in filenames seem to start at 1
             mask[slice_pos, :, :] = np.maximum(mask[slice_pos, :, :], image)
@@ -131,23 +106,23 @@ def create_dummy_dataset():
     return volume, header
 
 
-def load_dataset_fromfile(ctx, filename) -> None:
+def load_dataset_fromfile(ctx, filename):
     ctx.datasets = []
     ctx.current, ctx.label = 0, 0
     if ".vtk" in filename:
-        ctx.volume, ctx.header = load_vtk(filename, True)
+        ctx.volume, ctx.header = image_utils.load_vtk(filename)
     elif filename:  # Assume format is DICOM
-        ctx.volume, ctx.header = load_dicom(filename)
+        ctx.volume, ctx.header = image_dicom.load_dicom(filename)
     else:
         ctx.volume, ctx.header = create_dummy_dataset()
     ctx.mask = np.zeros(ctx.volume.shape, dtype=np.uint8)
     ctx.mpr.minmax_range[0] = np.min(ctx.volume)
     ctx.mpr.minmax_range[1] = np.max(ctx.volume)
-    mpr_update_level_range(ctx.mpr)
-    cmds_clear_stack(ctx.cmds)
+    ctx.mpr.update_level_range()
+    ctx.cmds.clear_stack()
 
 
-def load_mask_fromfile(ctx, filename) -> None:
+def load_mask_fromfile(ctx, filename):
     """Load a segmentation mask from file
 
     If the grayscale volume we are segmenting does not match the size
@@ -157,54 +132,59 @@ def load_mask_fromfile(ctx, filename) -> None:
     """
     if ".vtk" not in filename:
         return
-    mask, header = load_vtk(filename)
+    mask, header = image_utils.load_vtk(filename)
     if mask.dtype == np.uint8:
         if mask.shape != ctx.volume.shape:
             ctx.header = header
             ctx.volume = np.zeros(mask.shape, dtype=np.uint8)
         ctx.mask = mask
-        cmds_clear_stack(ctx.cmds)
+        ctx.cmds.clear_stack()
 
 
-def do_initialize(ctx) -> None:
+def do_initialize(ctx):
     """Initialize the application state"""
     tools = ctx.tools
 
     ctx.classes = ["Label 255", "Label 0 (Clear)"]
     load_dataset_fromfile(ctx, "")
 
-    # These images are just placeholders until the code for showing MPR views
-    # in the navigator is implemented
+    # Placeholders for XYZ views shown in the navigator
     axial_view = np.array([0, 0, 255], dtype=np.uint8).reshape((1, 1, 3))
-    sagital_view = np.array([255, 0, 0], dtype=np.uint8).reshape((1, 1, 3))
     coronal_view = np.array([0, 255, 0], dtype=np.uint8).reshape((1, 1, 3))
+    sagital_view = np.array([255, 0, 0], dtype=np.uint8).reshape((1, 1, 3))
 
-    ctx.textures["volume"] = create_texture_3d(ctx.volume, filter_mode=gl.GL_LINEAR)
-    ctx.textures["mask"] = create_texture_3d(ctx.mask, filter_mode=gl.GL_LINEAR)
-    ctx.textures["axial"] = create_texture_2d(axial_view, filter_mode=gl.GL_LINEAR)
-    ctx.textures["sagital"] = create_texture_2d(sagital_view, filter_mode=gl.GL_LINEAR)
-    ctx.textures["coronal"] = create_texture_2d(coronal_view, filter_mode=gl.GL_LINEAR)
-    ctx.vaos["default"] = gl.glGenVertexArrays(1)
-    ctx.programs["raycast"] = create_program(
-        (raycast_vs, gl.GL_VERTEX_SHADER), (raycast_fs, gl.GL_FRAGMENT_SHADER)
+    ctx.programs["raycast"] = gfx_utils.create_program(
+        (gfx_shaders.raycast_vs, gl.GL_VERTEX_SHADER),
+        (gfx_shaders.raycast_fs, gl.GL_FRAGMENT_SHADER),
     )
-    ctx.programs["polygon"] = create_program(
-        (polygon_vs, gl.GL_VERTEX_SHADER), (polygon_fs, gl.GL_FRAGMENT_SHADER)
+    ctx.programs["polygon"] = gfx_utils.create_program(
+        (gfx_shaders.polygon_vs, gl.GL_VERTEX_SHADER),
+        (gfx_shaders.polygon_fs, gl.GL_FRAGMENT_SHADER),
     )
-    ctx.programs["background"] = create_program(
-        (background_vs, gl.GL_VERTEX_SHADER), (background_fs, gl.GL_FRAGMENT_SHADER)
+    ctx.programs["background"] = gfx_utils.create_program(
+        (gfx_shaders.background_vs, gl.GL_VERTEX_SHADER),
+        (gfx_shaders.background_fs, gl.GL_FRAGMENT_SHADER),
     )
-    ctx.vaos["polygon"], ctx.buffers["polygon"] = create_mesh_buffer(tools.polygon.points)
-    ctx.vaos["markers"], ctx.buffers["markers"] = create_mesh_buffer(tools.polygon.points)
+
     ctx.vaos["empty"] = gl.glGenVertexArrays(1)
+    ctx.buffers["polygon"] = gfx_utils.create_mesh_buffer(tools.polygon.points)
+    ctx.vaos["polygon"] = gfx_utils.create_mesh_vao(tools.polygon.points, ctx.buffers["polygon"])
+    ctx.buffers["markers"] = gfx_utils.create_mesh_buffer(tools.polygon.points)
+    ctx.vaos["markers"] = gfx_utils.create_mesh_vao(tools.polygon.points, ctx.buffers["markers"])
+
+    ctx.textures["volume"] = gfx_utils.create_texture_3d(ctx.volume)
+    ctx.textures["mask"] = gfx_utils.create_texture_3d(ctx.mask)
+    ctx.textures["axial"] = gfx_utils.create_texture_2d(axial_view)
+    ctx.textures["sagital"] = gfx_utils.create_texture_2d(sagital_view)
+    ctx.textures["coronal"] = gfx_utils.create_texture_2d(coronal_view)
 
 
-def do_rendering(ctx) -> None:
+def do_rendering(ctx):
     """Do rendering"""
     tools = ctx.tools
     tool_op = TOOL_OP_ADD if ctx.label == 0 else TOOL_OP_SUBTRACT
 
-    mpr_planes_snapped = snap_mpr_to_grid(ctx.volume, ctx.mpr.planes)
+    mpr_planes = ctx.mpr.get_snapped_planes(ctx.volume)
     level_range = ctx.mpr.level_range
     level_range_scaled = level_range  # Adjusted for normalized texture formats
     if ctx.volume.dtype == np.uint8:
@@ -213,10 +193,11 @@ def do_rendering(ctx) -> None:
         level_range_scaled = [v / 32767.0 for v in level_range]  # Scale to range [-1,1]
     filter_mode = gl.GL_NEAREST if ctx.mpr.show_voxels else gl.GL_LINEAR
 
-    proj = glm.perspective(glm.radians(ctx.settings.fov_degrees), ctx.aspect, 0.1, 10.0)
+    aspect = float(ctx.width) / ctx.height
+    proj = glm.perspective(glm.radians(ctx.settings.fov_degrees), aspect, 0.1, 10.0)
     if ctx.settings.projection_mode:
         k = glm.radians(ctx.settings.fov_degrees)
-        proj = glm.ortho(-k * ctx.aspect, k * ctx.aspect, -k, k, 0.1, 10.0)
+        proj = glm.ortho(-k * aspect, k * aspect, -k, k, 0.1, 10.0)
     view = (
         glm.translate(glm.mat4(1.0), glm.vec3(0, 0, -2))
         * glm.translate(glm.mat4(1.0), -ctx.panning.position)
@@ -263,7 +244,7 @@ def do_rendering(ctx) -> None:
         gl.glGetUniformLocation(program, "u_projection_mode"), ctx.settings.projection_mode
     )
     gl.glUniform1i(gl.glGetUniformLocation(program, "u_show_mpr"), ctx.mpr.enabled)
-    gl.glUniform3f(gl.glGetUniformLocation(program, "u_mpr_planes"), *mpr_planes_snapped)
+    gl.glUniform3f(gl.glGetUniformLocation(program, "u_mpr_planes"), *mpr_planes)
     gl.glUniform2f(gl.glGetUniformLocation(program, "u_level_range"), *level_range_scaled)
     gl.glUniform3f(gl.glGetUniformLocation(program, "u_extent"), *extent)
     gl.glUniform4f(gl.glGetUniformLocation(program, "u_brush"), *tools.brush.position)
@@ -271,7 +252,7 @@ def do_rendering(ctx) -> None:
         gl.glUniform4f(gl.glGetUniformLocation(program, "u_brush"), *tools.smartbrush.position)
     gl.glUniform1i(gl.glGetUniformLocation(program, "u_volume"), 0)
     gl.glUniform1i(gl.glGetUniformLocation(program, "u_mask"), 1)
-    gl.glBindVertexArray(ctx.vaos["default"])
+    gl.glBindVertexArray(ctx.vaos["empty"])
     gl.glDrawArrays(gl.GL_TRIANGLE_STRIP, 0, 14)
     gl.glBindVertexArray(0)
 
@@ -315,78 +296,81 @@ def do_rendering(ctx) -> None:
         ndc_pos.x = (float(x) / ctx.width) * 2.0 - 1.0
         ndc_pos.y = -((float(y) / ctx.height) * 2.0 - 1.0)
         ndc_pos.z = depth[0][0] * 2.0 - 1.0
-        view_pos = reconstruct_view_pos(ndc_pos, proj)
+        view_pos = gfx_utils.reconstruct_view_pos(ndc_pos, proj)
         texcoord = glm.vec3(glm.inverse(mv) * glm.vec4(view_pos, 1.0)) + 0.5001
 
         tools.brush.position = glm.vec4(texcoord - 0.5, tools.brush.position.w)
         tools.smartbrush.position = glm.vec4(texcoord - 0.5, tools.smartbrush.position.w)
 
         if depth != 1.0 and tools.brush.painting and tools.brush.enabled:
-            if tools.brush.frame_count == 0:
-                # Add full copy of current mask to command buffer to allow undo
+            brush = tools.brush
+            if brush.frame_count == 0:
+                # Store full copy of current segmentation for undo
                 cmd = UpdateVolumeCmd(ctx.mask, np.copy(ctx.mask), (0, 0, 0), ctx.textures["mask"])
-                cmds_push_apply(ctx.cmds, cmd)
-            tools.brush.frame_count += 1
-            result = brush_tool_apply(tools.brush, ctx.mask, texcoord, spacing, tool_op)
+                ctx.cmds.push_apply(cmd)
+            brush.frame_count += 1
+            result = brush.apply(ctx.mask, texcoord, spacing, tool_op)
             if result:
-                update_subtexture_3d(ctx.textures["mask"], result[0], result[1])
+                gfx_utils.update_subtexture_3d(ctx.textures["mask"], result[0], result[1])
 
         if depth != 1.0 and tools.smartbrush.painting and tools.smartbrush.enabled:
-            if tools.smartbrush.frame_count == 0:
+            smartbrush = tools.smartbrush
+            if smartbrush.frame_count == 0:
+                # Store full copy of current segmentation for undo
                 cmd = UpdateVolumeCmd(ctx.mask, np.copy(ctx.mask), (0, 0, 0), ctx.textures["mask"])
-                cmds_push_apply(ctx.cmds, cmd)
-            if tools.smartbrush.xy[0] != x or tools.smartbrush.xy[1] != y:
-                tools.smartbrush.frame_count += 1
-                tools.smartbrush.momentum = min(5, tools.smartbrush.momentum + 2)
-                tools.smartbrush.xy = (x, y)
-            if tools.smartbrush.momentum > 0:
-                result = smartbrush_tool_apply(
-                    tools.smartbrush, ctx.mask, ctx.volume, texcoord, spacing, level_range, tool_op
+                ctx.cmds.push_apply(cmd)
+            if smartbrush.xy[0] != x or smartbrush.xy[1] != y:
+                smartbrush.frame_count += 1
+                smartbrush.momentum = min(5, smartbrush.momentum + 2)
+                smartbrush.xy = (x, y)
+            if smartbrush.momentum > 0:
+                result = smartbrush.apply(
+                    ctx.mask, ctx.volume, texcoord, spacing, level_range, tool_op
                 )
                 if result:
-                    update_subtexture_3d(ctx.textures["mask"], result[0], result[1])
-                tools.smartbrush.momentum = max(0, tools.smartbrush.momentum - 1)
+                    gfx_utils.update_subtexture_3d(ctx.textures["mask"], result[0], result[1])
+                smartbrush.momentum = max(0, smartbrush.momentum - 1)
 
         if depth != 1.0 and tools.polygon.enabled:
-            if tools.polygon.clicking:
+            polygon = tools.polygon
+            if polygon.clicking:
                 # First, check if an existing polygon vertex is close to cursor
                 radius = 3.5e-4 * ctx.settings.fov_degrees  # Search radius
-                closest = polygon_tool_find_closest(tools.polygon, texcoord - 0.5, radius)
-                if len(tools.polygon.points) and closest >= 0:
+                closest = polygon.find_closest(texcoord - 0.5, radius)
+                if len(polygon.points) and closest >= 0:
                     # If an existing vertex was found, select it for manipulation
-                    tools.polygon.selected = closest
+                    polygon.selected = closest
                 else:
                     # Otherwise, add a new polygon vertex at the cursor location
-                    tools.polygon.selected = len(tools.polygon.points)
-                    tools.polygon.points.extend(texcoord - 0.5)
-                tools.polygon.clicking = False
-            if tools.polygon.selected >= 0:
+                    polygon.selected = len(polygon.points)
+                    polygon.points.extend(texcoord - 0.5)
+                polygon.clicking = False
+            if polygon.selected >= 0:
                 # Add a few frames delay to the manipulation
-                tools.polygon.frame_count += 1
-                if tools.polygon.frame_count > 8:
+                polygon.frame_count += 1
+                if polygon.frame_count > 8:
                     # Move selected polygon vertex to cursor location
-                    offset = tools.polygon.selected
-                    tools.polygon.points[offset : offset + 3] = (texcoord - 0.5).to_tuple()
-                update_mesh_buffer(ctx.buffers["polygon"], tools.polygon.points)
-                update_mesh_buffer(ctx.buffers["markers"], tools.polygon.points)
+                    offset = polygon.selected
+                    polygon.points[offset : offset + 3] = (texcoord - 0.5).to_tuple()
+                gfx_utils.update_mesh_buffer(ctx.buffers["polygon"], polygon.points)
+                gfx_utils.update_mesh_buffer(ctx.buffers["markers"], polygon.points)
 
         if depth != 1.0 and tools.livewire.enabled:
+            livewire = tools.livewire
             clicking = False
-            if tools.livewire.clicking:
-                tools.livewire.markers.extend(texcoord - 0.5)
-                update_mesh_buffer(ctx.buffers["markers"], tools.livewire.markers)
-                livewire_tool_update_graph(tools.livewire, ctx.volume, texcoord, level_range)
-                tools.livewire.clicking = False
+            if livewire.clicking:
+                livewire.markers.extend(texcoord - 0.5)
+                gfx_utils.update_mesh_buffer(ctx.buffers["markers"], livewire.markers)
+                livewire.update_graph(ctx.volume, texcoord, level_range)
+                livewire.clicking = False
                 clicking = True
-            if len(tools.livewire.path):
-                livewire_tool_update_path(
-                    tools.livewire, ctx.volume, texcoord, level_range, clicking
-                )
-                # Update polyline for preview
-                update_mesh_buffer(ctx.buffers["polygon"], tools.livewire.points)
+            if len(livewire.path):
+                livewire.update_path(ctx.volume, texcoord, level_range, clicking)
+                # Also update polyline for preview
+                gfx_utils.update_mesh_buffer(ctx.buffers["polygon"], livewire.points)
 
 
-def do_update(ctx) -> None:
+def do_update(ctx):
     """Update application state"""
     tools = ctx.tools
     tool_op = TOOL_OP_ADD if ctx.label == 0 else TOOL_OP_SUBTRACT
@@ -397,37 +381,39 @@ def do_update(ctx) -> None:
     )
 
     if tools.polygon.rasterise and len(tools.polygon.points):
+        polygon = tools.polygon
         # Rasterise polygon into mask image
-        result = polygon_tool_apply(tools.polygon, ctx.mask, tool_op)
+        result = polygon.apply(ctx.mask, tool_op)
         if result:
             cmd = UpdateVolumeCmd(ctx.mask, result[0], result[1], ctx.textures["mask"])
-            cmds_push_apply(ctx.cmds, cmd)
+            ctx.cmds.push_apply(cmd)
         # Clean up for drawing next polygon
-        tools_cancel_drawing_all(tools)
-        tools.polygon.rasterise = False
+        tools.cancel_drawing_all()
+        polygon.rasterise = False
 
     if tools.livewire.rasterise and len(tools.livewire.points):
+        livewire = tools.livewire
         # Rasterise livewire into mask image
-        result = livewire_tool_apply(tools.livewire, ctx.mask, tool_op)
+        result = livewire.apply(ctx.mask, tool_op)
         if result:
             cmd = UpdateVolumeCmd(ctx.mask, result[0], result[1], ctx.textures["mask"])
-            cmds_push_apply(ctx.cmds, cmd)
+            ctx.cmds.push_apply(cmd)
         # Clean up for drawing next livewire
-        tools_cancel_drawing_all(tools)
-        tools.livewire.rasterise = False
+        tools.cancel_drawing_all()
+        livewire.rasterise = False
 
     show_menubar(ctx)
     show_gui(ctx)
 
 
-def show_file_selection() -> str:
+def show_file_selection():
     root = tk.Tk()
     root.withdraw()  # Hide Tk window
     filepath = tk.filedialog.askopenfilename(filetypes=[("Volume file", ".vtk .dcm")])
     return filepath
 
 
-def show_save_selection() -> str:
+def show_save_selection():
     root = tk.Tk()
     root.withdraw()  # Hide Tk window
     filepath = tk.filedialog.asksaveasfilename(
@@ -450,7 +436,7 @@ def show_quit_dialog():
     return tk.messagebox.askokcancel("Quit", msg)
 
 
-def show_menubar(ctx) -> None:
+def show_menubar(ctx):
     """Show ImGui menu bar"""
     imgui.begin_main_menu_bar()
     if imgui.begin_menu("File"):
@@ -459,45 +445,45 @@ def show_menubar(ctx) -> None:
             if filename:
                 ctx.settings.basepath = filename
                 load_dataset_fromfile(ctx, filename)
-                update_texture_3d(ctx.textures["volume"], ctx.volume)
-                update_texture_3d(ctx.textures["mask"], ctx.mask)
-                tools_cancel_drawing_all(ctx.tools)
+                gfx_utils.update_texture_3d(ctx.textures["volume"], ctx.volume)
+                gfx_utils.update_texture_3d(ctx.textures["mask"], ctx.mask)
+                ctx.tools.cancel_drawing_all()
         if imgui.menu_item("Save volume...")[0]:
             filename = show_save_selection()
             if filename:
-                save_vtk(filename, ctx.volume, ctx.header)
+                image_utils.save_vtk(filename, ctx.volume, ctx.header)
         if imgui.menu_item("Open segmentation...")[0]:
             filename = show_file_selection()
             if filename:
                 load_mask_fromfile(ctx, filename)
-                update_texture_3d(ctx.textures["volume"], ctx.volume)
-                update_texture_3d(ctx.textures["mask"], ctx.mask)
-                tools_cancel_drawing_all(ctx.tools)
+                gfx_utils.update_texture_3d(ctx.textures["volume"], ctx.volume)
+                gfx_utils.update_texture_3d(ctx.textures["mask"], ctx.mask)
+                ctx.tools.cancel_drawing_all()
         if imgui.menu_item("Save segmentation...")[0]:
             filename = show_save_selection()
             if filename:
                 mask_header = copy.deepcopy(ctx.header)
                 mask_header["format"] = "unsigned_char"
-                save_vtk(filename, ctx.mask, mask_header)
+                image_utils.save_vtk(filename, ctx.mask, mask_header)
         if imgui.menu_item("Quit")[0]:
             if show_quit_dialog():
                 glfw.set_window_should_close(ctx.window, glfw.TRUE)
         imgui.end_menu()
     if imgui.begin_menu("Edit"):
         if imgui.menu_item("Undo (Ctrl+z)")[0]:
-            cmds_pop_undo(ctx.cmds)
+            ctx.cmds.pop_undo()
         if imgui.menu_item("Resample orientation...")[0]:
             if show_resample_orientation_dialog():
-                ctx.volume, ctx.header = resample_volume(ctx.volume, ctx.header)
+                ctx.volume, ctx.header = image_dicom.resample_volume(ctx.volume, ctx.header)
                 ctx.mask = np.zeros(ctx.volume.shape, dtype=np.uint8)
-                update_texture_3d(ctx.textures["volume"], ctx.volume)
-                update_texture_3d(ctx.textures["mask"], ctx.mask)
-                tools_cancel_drawing_all(ctx.tools)
-                cmds_clear_stack(ctx.cmds)
+                gfx_utils.update_texture_3d(ctx.textures["volume"], ctx.volume)
+                gfx_utils.update_texture_3d(ctx.textures["mask"], ctx.mask)
+                ctx.tools.cancel_drawing_all()
+                ctx.cmds.clear_stack()
         if imgui.menu_item("Clear segmentation")[0]:
             zeros = np.zeros(ctx.mask.shape, dtype=ctx.mask.dtype)
             cmd = UpdateVolumeCmd(ctx.mask, zeros, (0, 0, 0), ctx.textures["mask"])
-            cmds_push_apply(ctx.cmds, cmd)
+            ctx.cmds.push_apply(cmd)
         imgui.end_menu()
     if imgui.begin_menu("Tools"):
         if imgui.menu_item("Volume statistics")[0]:
@@ -512,12 +498,12 @@ def show_menubar(ctx) -> None:
     imgui.end_main_menu_bar()
 
 
-def show_navigator(ctx) -> None:
+def show_navigator(ctx):
     """Show a navigator window with axial, coronal, and sagital views"""
     sf = imgui.get_io().font_global_scale
     flags = imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_TITLE_BAR
     views = ["axial", "coronal", "sagital"]
-    planes = [MPR_PLANE_Z, MPR_PLANE_Y, MPR_PLANE_X]
+    planes = [gfx_mpr.MPR_PLANE_Z, gfx_mpr.MPR_PLANE_Y, gfx_mpr.MPR_PLANE_X]
     wh = ctx.height / 5.0
     padding = 8
 
@@ -532,24 +518,24 @@ def show_navigator(ctx) -> None:
         scrolling = imgui.get_io().mouse_wheel
         if views[i] == "axial" and clicked:
             ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(0, 0, 0)))
-            tools_set_plane_all(ctx.tools, planes[i])
+            ctx.tools.set_plane_all(planes[i])
         if views[i] == "coronal" and clicked:
             ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(-90, 180, 0)))
-            tools_set_plane_all(ctx.tools, planes[i])
+            ctx.tools.set_plane_all(planes[i])
         if views[i] == "sagital" and clicked:
             ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(-90, 90, 0)))
-            tools_set_plane_all(ctx.tools, planes[i])
+            ctx.tools.set_plane_all(planes[i])
         if hovered and scrolling:
             # This implements a form of quick-scroll when the user scrolls
             # over the miniature view in the navigator
             steps = max(1.0, ctx.volume.shape[i] / 25.0)
-            mpr_scroll_by_axis(ctx.mpr, ctx.volume, planes[i], scrolling * steps)
+            ctx.mpr.scroll_by_axis(ctx.volume, planes[i], scrolling * steps)
         if i < 2:
             imgui.spacing()
     imgui.end()
 
 
-def show_volume_stats(ctx) -> None:
+def show_volume_stats(ctx):
     sf = imgui.get_io().font_global_scale
     imgui.set_next_window_size(250 * sf, 120 * sf)
     imgui.set_next_window_position(ctx.width - 250 * sf, 18 * sf)
@@ -566,7 +552,7 @@ def show_volume_stats(ctx) -> None:
     imgui.text("Mask type: %s" % str(ctx.mask.dtype))
     imgui.text("Segmented volume (ml): %.2f" % (ctx.segmented_volume_ml))
     imgui.unindent(5)
-    if ctx.cmds.dirty and not tools_is_painting_any(ctx.tools):
+    if ctx.cmds.dirty and not ctx.tools.is_painting_any():
         print("Recalculating volume...")
         tic = time.time()
         ctx.segmented_volume_ml = np.sum(ctx.mask > 127) * np.prod(ctx.header["spacing"]) * 1e-3
@@ -575,7 +561,7 @@ def show_volume_stats(ctx) -> None:
     imgui.end()
 
 
-def show_input_guide(ctx) -> None:
+def show_input_guide(ctx):
     sf = imgui.get_io().font_global_scale
     imgui.set_next_window_size(250 * sf, 240 * sf)
     if ctx.settings.show_stats:
@@ -607,13 +593,14 @@ def show_input_guide(ctx) -> None:
 
 def show_volume_settings(ctx):
     """Show widgets for volume settings"""
-    mpr = ctx.mpr
-    clicked, mpr.level_preset = imgui.combo("Level preset", mpr.level_preset, MPR_PRESET_NAMES)
+    clicked, ctx.mpr.level_preset = imgui.combo(
+        "Level preset", ctx.mpr.level_preset, gfx_mpr.MPR_PRESET_NAMES
+    )
     if clicked:
-        mpr_update_level_range(mpr)
-    clicked, ctx.mpr.level_range = imgui.drag_int2("Level range", *mpr.level_range, 10)
+        ctx.mpr.update_level_range()
+    clicked, ctx.mpr.level_range = imgui.drag_int2("Level range", *ctx.mpr.level_range, 10)
     if clicked:
-        mpr.level_preset = MPR_PRESET_NAMES.index("Custom")
+        ctx.mpr.level_preset = gfx_mpr.MPR_PRESET_NAMES.index("Custom")
 
 
 def show_segmentation_settings(ctx):
@@ -627,55 +614,60 @@ def show_tools_settings(ctx):
     tools = ctx.tools
 
     # Polygon tool settings
-    clicked, tools.polygon.enabled = imgui.checkbox("Polygon tool", tools.polygon.enabled)
-    if clicked and tools.polygon.enabled:
-        tools_disable_all_except(tools, tools.polygon)
-    if tools.polygon.enabled:
+    polygon = tools.polygon
+    clicked, polygon.enabled = imgui.checkbox("Polygon tool", polygon.enabled)
+    if clicked and polygon.enabled:
+        tools.disable_all_except(polygon)
+    if polygon.enabled:
         imgui.indent(5)
-        _, tools.polygon.antialiasing = imgui.checkbox("Antialiasing", tools.polygon.antialiasing)
+        _, polygon.antialiasing = imgui.checkbox("Antialiasing", polygon.antialiasing)
         imgui.unindent(5)
 
     # Brush tool settings
-    clicked, tools.brush.enabled = imgui.checkbox("Brush tool", tools.brush.enabled)
-    if clicked and tools.brush.enabled:
-        tools_disable_all_except(tools, tools.brush)
-    if tools.brush.enabled:
+    brush = tools.brush
+    clicked, brush.enabled = imgui.checkbox("Brush tool", brush.enabled)
+    if clicked and brush.enabled:
+        tools.disable_all_except(brush)
+    if brush.enabled:
         imgui.indent(5)
-        _, tools.brush.mode = imgui.combo("Mode", tools.brush.mode, ["2D", "3D"])
-        _, tools.brush.size = imgui.slider_int("Brush size", tools.brush.size, 1, 80)
-        _, tools.brush.antialiasing = imgui.checkbox("Antialiasing", tools.brush.antialiasing)
+        _, brush.mode = imgui.combo("Mode", brush.mode, ["2D", "3D"])
+        _, brush.size = imgui.slider_int("Brush size", brush.size, 1, 80)
+        _, brush.antialiasing = imgui.checkbox("Antialiasing", brush.antialiasing)
         imgui.unindent(5)
 
     # Livewire tool settings
-    clicked, tools.livewire.enabled = imgui.checkbox("Livewire tool", tools.livewire.enabled)
-    if clicked and tools.livewire.enabled:
-        tools_disable_all_except(tools, tools.livewire)
-    if tools.livewire.enabled:
+    livewire = tools.livewire
+    clicked, livewire.enabled = imgui.checkbox("Livewire tool", livewire.enabled)
+    if clicked and livewire.enabled:
+        tools.disable_all_except(livewire)
+    if livewire.enabled:
         imgui.indent(5)
-        _, tools.livewire.smoothing = imgui.checkbox("Smoothing enabled", tools.livewire.smoothing)
+        _, livewire.smoothing = imgui.checkbox("Smoothing enabled", livewire.smoothing)
         imgui.unindent(5)
 
     # Smart brush tool settings
-    clicked, tools.smartbrush.enabled = imgui.checkbox("Smartbrush tool", tools.smartbrush.enabled)
-    if clicked and tools.smartbrush.enabled:
-        tools_disable_all_except(tools, tools.smartbrush)
-    if tools.smartbrush.enabled:
+    smartbrush = tools.smartbrush
+    clicked, smartbrush.enabled = imgui.checkbox("Smartbrush tool", smartbrush.enabled)
+    if clicked and smartbrush.enabled:
+        tools.disable_all_except(smartbrush)
+    if smartbrush.enabled:
         imgui.indent(5)
-        _, tools.smartbrush.mode = imgui.combo("Mode", tools.smartbrush.mode, ["2D", "3D"])
-        _, tools.smartbrush.size = imgui.slider_int("Brush size", tools.smartbrush.size, 1, 80)
-        _, tools.smartbrush.sensitivity = imgui.slider_float(
-            "Sensitivity", tools.smartbrush.sensitivity, 0.0, 10.0
+        _, smartbrush.mode = imgui.combo("Mode", smartbrush.mode, ["2D", "3D"])
+        _, smartbrush.size = imgui.slider_int("Brush size", smartbrush.size, 1, 80)
+        _, smartbrush.sensitivity = imgui.slider_float(
+            "Sensitivity", smartbrush.sensitivity, 0.0, 10.0
         )
-        _, tools.smartbrush.delta_scaling = imgui.slider_float(
-            "Delta scale", tools.smartbrush.delta_scaling, 1.0, 5.0
+        _, smartbrush.delta_scaling = imgui.slider_float(
+            "Delta scale", smartbrush.delta_scaling, 1.0, 5.0
         )
         imgui.unindent(5)
 
     # Seed painting tool settings
-    clicked, tools.seedpaint.enabled = imgui.checkbox("Seed paint tool", tools.seedpaint.enabled)
-    if clicked and tools.seedpaint.enabled:
-        tools_disable_all_except(tools, tools.seedpaint)
-    if tools.seedpaint.enabled:
+    seedpaint = tools.seedpaint
+    clicked, seedpaint.enabled = imgui.checkbox("Seed paint tool", seedpaint.enabled)
+    if clicked and seedpaint.enabled:
+        tools.disable_all_except(seedpaint)
+    if seedpaint.enabled:
         imgui.indent(5)
         imgui.text("Not implemented yet (TODO)")
         imgui.unindent(5)
@@ -697,7 +689,7 @@ def show_misc_settings(ctx):
         set_gui_style(ctx.settings.dark_mode)
 
 
-def show_gui(ctx) -> None:
+def show_gui(ctx):
     """Show ImGui windows"""
     sf = imgui.get_io().font_global_scale
     imgui.set_next_window_size(ctx.sidebar_width, ctx.height - 18 * sf)
@@ -770,21 +762,19 @@ def key_callback(window, key, scancode, action, mods):
         ctx.imgui_glfw.keyboard_callback(window, key, scancode, action, mods)
         return
 
-    tools = ctx.tools
-
     if key == glfw.KEY_LEFT_SHIFT:
         # Note: some keyboards will repeat action keys, so must check for that
         # case as well
         ctx.mpr.scrolling = action == glfw.PRESS or action == glfw.REPEAT
     if key == glfw.KEY_1:  # Show top-view
         ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(0, 0, 0)))
-        tools_set_plane_all(tools, MPR_PLANE_Z)
+        ctx.tools.set_plane_all(gfx_mpr.MPR_PLANE_Z)
     if key == glfw.KEY_2:  # Show side-view
         ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(-90, 90, 0)))
-        tools_set_plane_all(tools, MPR_PLANE_X)
+        ctx.tools.set_plane_all(gfx_mpr.MPR_PLANE_X)
     if key == glfw.KEY_3:  # Show front-view
         ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(-90, 180, 0)))
-        tools_set_plane_all(tools, MPR_PLANE_Y)
+        ctx.tools.set_plane_all(gfx_mpr.MPR_PLANE_Y)
     if key == glfw.KEY_PAGE_UP and action == glfw.PRESS:
         ctx.label = max(ctx.label - 1, 0)
     if key == glfw.KEY_PAGE_DOWN and action == glfw.PRESS:
@@ -794,13 +784,13 @@ def key_callback(window, key, scancode, action, mods):
     if key == glfw.KEY_SPACE and action == glfw.RELEASE:
         ctx.settings.show_mask = True
     if key == glfw.KEY_ENTER:  # Rasterise polygon or livewire
-        tools.polygon.rasterise = action == glfw.PRESS
-        tools.livewire.rasterise = action == glfw.PRESS
+        ctx.tools.polygon.rasterise = action == glfw.PRESS
+        ctx.tools.livewire.rasterise = action == glfw.PRESS
     if key == glfw.KEY_ESCAPE:  # Cancel polygon or livewire
-        tools_cancel_drawing_all(tools)
+        ctx.tools.cancel_drawing_all()
     if key == glfw.KEY_Z and (mods & glfw.MOD_CONTROL):
         if action == glfw.PRESS:
-            cmds_pop_undo(ctx.cmds)
+            ctx.cmds.pop_undo()
 
 
 def mouse_button_callback(window, button, action, mods):
@@ -808,8 +798,6 @@ def mouse_button_callback(window, button, action, mods):
     if imgui.get_io().want_capture_mouse:
         ctx.imgui_glfw.mouse_callback(window, button, action, mods)
         return
-
-    tools = ctx.tools
 
     x, y = glfw.get_cursor_pos(window)
     if button == glfw.MOUSE_BUTTON_RIGHT:
@@ -819,18 +807,18 @@ def mouse_button_callback(window, button, action, mods):
         ctx.panning.center = glm.vec2(x, y)
         ctx.panning.panning = action == glfw.PRESS
     if button == glfw.MOUSE_BUTTON_LEFT:
-        if tools.brush.enabled:
-            tools.brush.painting = action == glfw.PRESS
-            tools.brush.frame_count = 0
-        if tools.smartbrush.enabled:
-            tools.smartbrush.painting = action == glfw.PRESS
-            tools.smartbrush.frame_count = 0
-        if tools.polygon.enabled:
-            tools.polygon.clicking = action == glfw.PRESS
-            tools.polygon.selected = -1
-            tools.polygon.frame_count = 0
-        if tools.livewire.enabled:
-            tools.livewire.clicking = action == glfw.PRESS
+        if ctx.tools.brush.enabled:
+            ctx.tools.brush.painting = action == glfw.PRESS
+            ctx.tools.brush.frame_count = 0
+        if ctx.tools.smartbrush.enabled:
+            ctx.tools.smartbrush.painting = action == glfw.PRESS
+            ctx.tools.smartbrush.frame_count = 0
+        if ctx.tools.polygon.enabled:
+            ctx.tools.polygon.clicking = action == glfw.PRESS
+            ctx.tools.polygon.selected = -1
+            ctx.tools.polygon.frame_count = 0
+        if ctx.tools.livewire.enabled:
+            ctx.tools.livewire.clicking = action == glfw.PRESS
 
 
 def cursor_pos_callback(window, x, y):
@@ -850,10 +838,10 @@ def scroll_callback(window, xoffset, yoffset):
 
     if ctx.mpr.scrolling:
         ray_dir = glm.vec3(glm.inverse(glm.mat4_cast(ctx.trackball.quat))[2])
-        mpr_scroll_by_ray(ctx.mpr, ctx.volume, ray_dir, yoffset)
+        ctx.mpr.scroll_by_ray(ctx.volume, ray_dir, yoffset)
         # Cancel all drawing in case the user was drawing a polygon or livewire
         # on the MPR plane while scrolling
-        tools_cancel_drawing_all(ctx.tools)
+        ctx.tools.cancel_drawing_all()
     else:
         ctx.settings.fov_degrees += 2.0 * yoffset
         ctx.settings.fov_degrees = max(5.0, min(90.0, ctx.settings.fov_degrees))
@@ -863,7 +851,6 @@ def resize_callback(window, w, h):
     ctx = glfw.get_window_user_pointer(window)
     ctx.width = max(1, w - ctx.sidebar_width)
     ctx.height = max(1, h)
-    ctx.aspect = float(ctx.width) / ctx.height
     gl.glViewport(0, 0, ctx.width, ctx.height)
 
 

@@ -1,16 +1,14 @@
 import numpy as np
 import PilLite.Image
 
-from typing import List, Tuple, Dict
 
-
-def load_image(filename) -> np.array:
+def load_image(filename):
     """Load 2D image stored in common format (png, jpg, etc.) on disk"""
     image = PilLite.Image.open(filename)
     return np.array(image)
 
 
-def load_vtk(filename, normalize_scalars=False) -> Tuple[np.array, Dict]:
+def load_vtk(filename):
     """Load volume stored in legacy VTK format on disk. Currently only
     supports scalar data stored in binary format (not ASCII).
     """
@@ -50,7 +48,7 @@ def load_vtk(filename, normalize_scalars=False) -> Tuple[np.array, Dict]:
     return volume, header
 
 
-def save_vtk(filename, volume, header) -> None:
+def save_vtk(filename, volume, header):
     """Save volume to be stored in legacy VTK format on disk. Currently only
     supports scalar data stored in binary format (not ASCII).
     """

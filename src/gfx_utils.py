@@ -3,7 +3,6 @@ import OpenGL.GL as gl
 import glm
 
 import struct
-from typing import List, Tuple, Dict
 
 
 class Trackball:
@@ -16,7 +15,7 @@ class Trackball:
         self.clamp = 100.0
         self.tracking = False
 
-    def move(self, x, y) -> None:
+    def move(self, x, y):
         """Update trackball state from 2D mouse input"""
         if not self.tracking:
             return
@@ -43,7 +42,7 @@ class Panning:
         self.position = glm.vec3(0.0)
         self.panning = False
 
-    def move(self, x, y) -> None:
+    def move(self, x, y):
         """Update panning state from 2D mouse input"""
         if not self.panning:
             return
@@ -53,7 +52,7 @@ class Panning:
         self.center = glm.vec2(x, y)
 
 
-def create_shader(source, stage) -> int:
+def create_shader(source, stage):
     """Compile GLSL shader from source string"""
     shader = gl.glCreateShader(stage)
     gl.glShaderSource(shader, source)
@@ -63,7 +62,7 @@ def create_shader(source, stage) -> int:
     return shader
 
 
-def create_program(*shaders) -> int:
+def create_program(*shaders):
     """Compile and link GLSL program from shader sources"""
     program = gl.glCreateProgram()
     for source, stage in shaders:
@@ -77,22 +76,29 @@ def create_program(*shaders) -> int:
 
 
 def create_mesh_buffer(mesh):
-    """Create a vertex buffer + VAO for a mesh. This will also upload
-    the mesh's vertex data to the buffer.
+    """Create a vertex buffer for a mesh. This also uploads the mesh data."""
+    vbo = gl.glGenBuffers(1)
+    gl.glBindBuffer(gl.GL_COPY_WRITE_BUFFER, vbo)
+    gl.glBufferData(gl.GL_COPY_WRITE_BUFFER, np.array(mesh, dtype=np.float32), gl.GL_STATIC_DRAW)
+    return vbo
+
+
+def create_mesh_vao(mesh, vbo):
+    """Create a vertex array object for drawing the mesh from its vertex buffer
+
+    Assumes the mesh is only storing vertex positions (XYZ data).
     """
     vao = gl.glGenVertexArrays(1)
-    vbo = gl.glGenBuffers(1)
     gl.glBindVertexArray(vao)
     gl.glBindBuffer(gl.GL_ARRAY_BUFFER, vbo)
-    gl.glBufferData(gl.GL_ARRAY_BUFFER, np.array(mesh, dtype=np.float32), gl.GL_STATIC_DRAW)
     gl.glEnableVertexAttribArray(0)
     gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 0, None)
     gl.glBindVertexArray(0)
-    return vao, vbo
+    return vao
 
 
 def update_mesh_buffer(vbo, mesh):
-    """Update vertex buffer data from mesh"""
+    """Update vertex buffer from the mesh data"""
     gl.glBindBuffer(gl.GL_COPY_WRITE_BUFFER, vbo)
     gl.glBufferData(gl.GL_COPY_WRITE_BUFFER, np.array(mesh, dtype=np.float32), gl.GL_STATIC_DRAW)
 
@@ -193,7 +199,7 @@ def update_subtexture_3d(texture, subimage, offset):
     gl.glBindTexture(gl.GL_TEXTURE_3D, 0)
 
 
-def load_stl_binary(filename) -> List[float]:
+def load_stl_binary(filename):
     """Load mesh from binary format STL file"""
     mesh = []
     with open(filename, "rb") as stream:
@@ -204,7 +210,7 @@ def load_stl_binary(filename) -> List[float]:
     return mesh
 
 
-def reconstruct_view_pos(ndc_pos, proj) -> glm.vec3:
+def reconstruct_view_pos(ndc_pos, proj):
     """Reconstruct view-space position from NDC position and projection matrix"""
     view_pos = glm.inverse(proj) * glm.vec4(ndc_pos, 1.0)
     return glm.vec3(view_pos / view_pos.w)

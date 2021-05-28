@@ -24,7 +24,6 @@ class LivewireTool:
         self.plane = TOOL_PLANE_Z
         self.antialiasing = False
 
-
     def apply(self, image, op=TOOL_OP_ADD):
         """Apply livewire tool to 2D slice of input 3D image
 
@@ -33,7 +32,6 @@ class LivewireTool:
         # XXX Re-use the existing code for the polygon tool, since a livewire
         # is basically just a polygon with a vertex for each pixel or voxel
         return PolygonTool.apply(self, image, op)
-
 
     def update_graph(self, image, texcoord, level_range):
         """Update livewire graph from 2D slice of input 3D image"""
@@ -62,7 +60,6 @@ class LivewireTool:
 
         self.dist, self.pred = _compute_dijkstra(self.graph, seed)
         self.path.append(seed)
-
 
     def update_path(self, image, texcoord, level_range, clicking):
         """Update livewire path from current 2D image graph"""

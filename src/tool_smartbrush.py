@@ -22,7 +22,6 @@ class SmartBrushTool:
         self.mode = TOOL_MODE_3D
         self.plane = TOOL_PLANE_Z
 
-
     def apply(self, image, volume, texcoord, spacing, level_range=None, op=TOOL_OP_ADD):
         """Apply smart brush to input 3D image
 
@@ -35,7 +34,6 @@ class SmartBrushTool:
         if max(abs(texcoord - 0.5)) > 0.5:
             return None
         return SmartBrushTool._apply(self, image, volume, texcoord, spacing, level_range, op)
-
 
     @staticmethod
     def _apply(tool, image, volume, texcoord, spacing, level_range, op):

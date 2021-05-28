@@ -17,7 +17,6 @@ class MPR:
         self.enabled = True
         self.scrolling = False
 
-
     def update_level_range(self):
         """Update MPR level range based on current preset and minmax range"""
         preset_name = MPR_PRESET_NAMES[self.level_preset]
@@ -26,7 +25,6 @@ class MPR:
             self.level_range = [v for v in self.minmax_range]
         elif preset_name != "Custom":
             self.level_range = [v for v in preset_range]
-
 
     def scroll_by_ray(self, volume, ray_dir, steps):
         """Scroll MPR a number of positive or negative steps along axis determined
@@ -37,15 +35,13 @@ class MPR:
                 steps_new = steps * np.sign(ray_dir[axis])
                 self.scroll_by_axis(volume, axis, steps_new)
 
-
     def scroll_by_axis(self, volume, axis, steps):
         """Scroll MPR a number of positive or negative steps along axis specified
         by index in range 0-2
         """
-        assert (axis >= 0 and axis <= 2)
+        assert axis >= 0 and axis <= 2
         delta = steps / float(volume.shape[2 - axis])
         self.planes[axis] = max(-0.4999, min(0.4999, self.planes[axis] + delta))
-
 
     def get_snapped_planes(self, volume):
         """Return copy of MPR planes snapped to voxel centers"""

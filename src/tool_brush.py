@@ -19,7 +19,6 @@ class BrushTool:
         self.plane = TOOL_PLANE_Z
         self.antialiasing = True
 
-
     def apply(self, image, texcoord, spacing, op=TOOL_OP_ADD):
         """Apply brush tool to input 3D image
 
@@ -28,7 +27,6 @@ class BrushTool:
         if max(abs(texcoord - 0.5)) > 0.5:
             return None
         return BrushTool._apply(self, image, texcoord, spacing, op)
-
 
     @staticmethod
     def _apply(tool, image, texcoord, spacing, op):

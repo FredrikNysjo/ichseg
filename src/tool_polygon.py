@@ -19,7 +19,6 @@ class PolygonTool:
         self.plane = TOOL_PLANE_Z
         self.antialiasing = True
 
-
     def apply(self, image, op=TOOL_OP_ADD):
         """Apply polygon tool to 2D slice of input 3D image
 
@@ -72,7 +71,6 @@ class PolygonTool:
         # Note: returned subimage must be a volume
         subimage = subimage.reshape(output_shape)
         return subimage, offset
-
 
     def find_closest(self, p, radius=0.005):
         """Find closest polygon vertex to p (within some search radius)

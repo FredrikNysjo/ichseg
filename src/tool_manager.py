@@ -14,7 +14,6 @@ class ToolManager:
         self.smartbrush = SmartBrushTool()
         self.seedpaint = SeedPaintTool()
 
-
     def disable_all_except(self, selected):
         """Disable all tools except the selected one (provided as reference)"""
         self.polygon.enabled = False
@@ -25,14 +24,12 @@ class ToolManager:
         selected.enabled = True
         self.cancel_drawing_all()
 
-
     def cancel_drawing_all(self):
         """Cancel drawing for all tools"""
         self.polygon.points = []
         self.livewire.path = []
         self.livewire.points = []
         self.livewire.markers = []
-
 
     def set_plane_all(self, axis):
         """Set the active drawing plane for all tools
@@ -46,7 +43,6 @@ class ToolManager:
         self.smartbrush.plane = axis
         self.seedpaint.plane = axis
         self.cancel_drawing_all()
-
 
     def is_painting_any(self):
         """Check if any of the brush tools are painting"""

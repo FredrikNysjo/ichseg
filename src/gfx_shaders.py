@@ -115,7 +115,7 @@ void main()
     if (bool(u_show_mask) && bool(u_show_mpr)) {
         float outline = clamp(length(mask_grad), 0.0, 1.0);
         outline *= 1.0 - step(0.05, max(length(dFdx(p)), length(dFdy(p))));
-        float alpha = max(0.5 * intensity[1], outline);
+        float alpha = max(0.5 * float(intensity[1] >= 0.5), outline);
         output_color.rgb = mix(output_color.rgb, label_color, alpha);
     }
 

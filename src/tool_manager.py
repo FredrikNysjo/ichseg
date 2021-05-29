@@ -47,3 +47,9 @@ class ToolManager:
     def is_painting_any(self):
         """Check if any of the brush tools are painting"""
         return self.brush.painting or self.smartbrush.painting
+
+    def is_active_any(self):
+        """Check if any of the tools are active, i.e. are painting or have
+        unfinished work
+        """
+        return self.is_painting_any() or len(self.polygon.points) or len(self.livewire.points)

@@ -32,7 +32,7 @@ class Settings:
         self.fov_degrees = 45.0
         self.projection_mode = 1  # 0=orthographic; 1=perspective
         self.show_stats = False
-        self.show_navigator = False
+        self.show_navigator = True
         self.show_input_guide = False
         self.dark_mode = True
         self.basepath = ""
@@ -149,9 +149,9 @@ def do_initialize(ctx):
     load_dataset_fromfile(ctx, "")
 
     # Placeholders for XYZ views shown in the navigator
-    axial_view = np.array([0, 0, 255], dtype=np.uint8).reshape((1, 1, 3))
-    coronal_view = np.array([0, 255, 0], dtype=np.uint8).reshape((1, 1, 3))
-    sagital_view = np.array([255, 0, 0], dtype=np.uint8).reshape((1, 1, 3))
+    axial_view = np.array([0, 0, 0], dtype=np.uint8).reshape((1, 1, 3))
+    coronal_view = np.array([0, 0, 0], dtype=np.uint8).reshape((1, 1, 3))
+    sagital_view = np.array([0, 0, 0], dtype=np.uint8).reshape((1, 1, 3))
 
     ctx.programs["raycast"] = gfx_utils.create_program(
         (gfx_shaders.raycast_vs, gl.GL_VERTEX_SHADER),
@@ -224,37 +224,40 @@ def do_rendering(ctx):
     gl.glViewport(0, 0, ctx.width, ctx.height)
     gl.glDepthMask(gl.GL_TRUE)
 
-    program = ctx.programs["raycast"]
-    gl.glUseProgram(program)
-    gl.glEnable(gl.GL_DEPTH_TEST)
-    gl.glEnable(gl.GL_CULL_FACE)
-    gl.glActiveTexture(gl.GL_TEXTURE1)
-    gl.glBindTexture(gl.GL_TEXTURE_3D, ctx.textures["mask"])
-    gl.glTexParameteri(gl.GL_TEXTURE_3D, gl.GL_TEXTURE_MIN_FILTER, filter_mode)
-    gl.glTexParameteri(gl.GL_TEXTURE_3D, gl.GL_TEXTURE_MAG_FILTER, filter_mode)
-    gl.glActiveTexture(gl.GL_TEXTURE0)
-    gl.glBindTexture(gl.GL_TEXTURE_3D, ctx.textures["volume"])
-    gl.glTexParameteri(gl.GL_TEXTURE_3D, gl.GL_TEXTURE_MIN_FILTER, filter_mode)
-    gl.glTexParameteri(gl.GL_TEXTURE_3D, gl.GL_TEXTURE_MAG_FILTER, filter_mode)
-    gl.glUniformMatrix4fv(gl.glGetUniformLocation(program, "u_mvp"), 1, False, glm.value_ptr(mvp))
-    gl.glUniformMatrix4fv(gl.glGetUniformLocation(program, "u_mv"), 1, False, glm.value_ptr(mv))
-    gl.glUniform1i(gl.glGetUniformLocation(program, "u_label"), 0)
-    gl.glUniform1i(gl.glGetUniformLocation(program, "u_show_mask"), ctx.settings.show_mask)
-    gl.glUniform1i(
-        gl.glGetUniformLocation(program, "u_projection_mode"), ctx.settings.projection_mode
-    )
-    gl.glUniform1i(gl.glGetUniformLocation(program, "u_show_mpr"), ctx.mpr.enabled)
-    gl.glUniform3f(gl.glGetUniformLocation(program, "u_mpr_planes"), *mpr_planes)
-    gl.glUniform2f(gl.glGetUniformLocation(program, "u_level_range"), *level_range_scaled)
-    gl.glUniform3f(gl.glGetUniformLocation(program, "u_extent"), *extent)
-    gl.glUniform4f(gl.glGetUniformLocation(program, "u_brush"), *tools.brush.position)
-    if tools.smartbrush.enabled:
-        gl.glUniform4f(gl.glGetUniformLocation(program, "u_brush"), *tools.smartbrush.position)
-    gl.glUniform1i(gl.glGetUniformLocation(program, "u_volume"), 0)
-    gl.glUniform1i(gl.glGetUniformLocation(program, "u_mask"), 1)
-    gl.glBindVertexArray(ctx.vaos["empty"])
-    gl.glDrawArrays(gl.GL_TRIANGLE_STRIP, 0, 14)
-    gl.glBindVertexArray(0)
+    if max(ctx.volume.shape) > 1:
+        program = ctx.programs["raycast"]
+        gl.glUseProgram(program)
+        gl.glEnable(gl.GL_DEPTH_TEST)
+        gl.glEnable(gl.GL_CULL_FACE)
+        gl.glActiveTexture(gl.GL_TEXTURE1)
+        gl.glBindTexture(gl.GL_TEXTURE_3D, ctx.textures["mask"])
+        gl.glTexParameteri(gl.GL_TEXTURE_3D, gl.GL_TEXTURE_MIN_FILTER, filter_mode)
+        gl.glTexParameteri(gl.GL_TEXTURE_3D, gl.GL_TEXTURE_MAG_FILTER, filter_mode)
+        gl.glActiveTexture(gl.GL_TEXTURE0)
+        gl.glBindTexture(gl.GL_TEXTURE_3D, ctx.textures["volume"])
+        gl.glTexParameteri(gl.GL_TEXTURE_3D, gl.GL_TEXTURE_MIN_FILTER, filter_mode)
+        gl.glTexParameteri(gl.GL_TEXTURE_3D, gl.GL_TEXTURE_MAG_FILTER, filter_mode)
+        gl.glUniformMatrix4fv(
+            gl.glGetUniformLocation(program, "u_mvp"), 1, False, glm.value_ptr(mvp)
+        )
+        gl.glUniformMatrix4fv(gl.glGetUniformLocation(program, "u_mv"), 1, False, glm.value_ptr(mv))
+        gl.glUniform1i(gl.glGetUniformLocation(program, "u_label"), 0)
+        gl.glUniform1i(gl.glGetUniformLocation(program, "u_show_mask"), ctx.settings.show_mask)
+        gl.glUniform1i(
+            gl.glGetUniformLocation(program, "u_projection_mode"), ctx.settings.projection_mode
+        )
+        gl.glUniform1i(gl.glGetUniformLocation(program, "u_show_mpr"), ctx.mpr.enabled)
+        gl.glUniform3f(gl.glGetUniformLocation(program, "u_mpr_planes"), *mpr_planes)
+        gl.glUniform2f(gl.glGetUniformLocation(program, "u_level_range"), *level_range_scaled)
+        gl.glUniform3f(gl.glGetUniformLocation(program, "u_extent"), *extent)
+        gl.glUniform4f(gl.glGetUniformLocation(program, "u_brush"), *tools.brush.position)
+        if tools.smartbrush.enabled:
+            gl.glUniform4f(gl.glGetUniformLocation(program, "u_brush"), *tools.smartbrush.position)
+        gl.glUniform1i(gl.glGetUniformLocation(program, "u_volume"), 0)
+        gl.glUniform1i(gl.glGetUniformLocation(program, "u_mask"), 1)
+        gl.glBindVertexArray(ctx.vaos["empty"])
+        gl.glDrawArrays(gl.GL_TRIANGLE_STRIP, 0, 14)
+        gl.glBindVertexArray(0)
 
     if tools.polygon.enabled:
         program = ctx.programs["polygon"]
@@ -470,7 +473,7 @@ def show_menubar(ctx):
                 glfw.set_window_should_close(ctx.window, glfw.TRUE)
         imgui.end_menu()
     if imgui.begin_menu("Edit"):
-        if imgui.menu_item("Undo (Ctrl+z)")[0]:
+        if imgui.menu_item("Undo (Ctrl+z)")[0] and not ctx.tools.is_active_any():
             ctx.cmds.pop_undo()
         if imgui.menu_item("Resample orientation...")[0]:
             if show_resample_orientation_dialog():
@@ -486,9 +489,9 @@ def show_menubar(ctx):
             ctx.cmds.push_apply(cmd)
         imgui.end_menu()
     if imgui.begin_menu("Tools"):
-        if imgui.menu_item("Volume statistics")[0]:
+        if imgui.menu_item("Show volume info")[0]:
             ctx.settings.show_stats = not ctx.settings.show_stats
-        if imgui.menu_item("Navigator views")[0]:
+        if imgui.menu_item("Show navigator")[0]:
             ctx.settings.show_navigator = not ctx.settings.show_navigator
         imgui.end_menu()
     if imgui.begin_menu("Help"):
@@ -498,40 +501,97 @@ def show_menubar(ctx):
     imgui.end_main_menu_bar()
 
 
+def draw_list_add_mpr_lines(draw_list, x, y, w, h, mpr, axis):
+    """Draw outline of the input axis and crosshair for the other axes"""
+    planes = mpr.planes
+    colors = [(0.5, 0.5, 1, 1), (0, 1, 0, 1), (1, 0, 0, 1)]
+    if axis == 0:
+        px, py = (planes[0] + 0.5) * w, (planes[1] + 0.5) * h
+        draw_list.add_line(
+            x + px, y, x + px, y + h, imgui.get_color_u32_rgba(*colors[2]), thickness=1.5
+        )
+        draw_list.add_line(
+            x, y + py, x + w, y + py, imgui.get_color_u32_rgba(*colors[1]), thickness=1.5
+        )
+    if axis == 1:
+        px, py = (planes[0] + 0.5) * w, (planes[2] + 0.5) * h
+        draw_list.add_line(
+            x + px, y, x + px, y + h, imgui.get_color_u32_rgba(*colors[2]), thickness=1.5
+        )
+        draw_list.add_line(
+            x, y + py, x + w, y + py, imgui.get_color_u32_rgba(*colors[0]), thickness=1.5
+        )
+    if axis == 2:
+        px, py = (planes[1] + 0.5) * w, (planes[2] + 0.5) * h
+        draw_list.add_line(
+            x + px, y, x + px, y + h, imgui.get_color_u32_rgba(*colors[1]), thickness=1.5
+        )
+        draw_list.add_line(
+            x, y + py, x + w, y + py, imgui.get_color_u32_rgba(*colors[0]), thickness=1.5
+        )
+    draw_list.add_rect(
+        x, y, x + w, y + h, imgui.get_color_u32_rgba(1.0, 1.0, 1.0, 0.5), thickness=1.0
+    )
+
+
 def show_navigator(ctx):
     """Show a navigator window with axial, coronal, and sagital views"""
     sf = imgui.get_io().font_global_scale
     flags = imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_TITLE_BAR
     views = ["axial", "coronal", "sagital"]
     planes = [gfx_mpr.MPR_PLANE_Z, gfx_mpr.MPR_PLANE_Y, gfx_mpr.MPR_PLANE_X]
-    wh = ctx.height / 5.0
+    xy_mapping = [(2, 1), (2, 0), (1, 0)]
+    tile_size = ctx.height / 5
     padding = 8
 
-    imgui.set_next_window_size(wh * sf, (wh * 3 - padding * 2) * sf)
-    imgui.set_next_window_position(0, ctx.height - (wh * 4 - padding) * sf)
+    imgui.set_next_window_size(tile_size * sf, (tile_size * 3 - padding * 2) * sf)
+    imgui.set_next_window_position(0, ctx.height - (tile_size * 4 - padding) * sf)
     imgui.set_next_window_bg_alpha(0.8)
     _, ctx.settings.show_navigator = imgui.begin("Navigator views", flags=flags)
     for i in range(0, 3):
-        imgui.image(ctx.textures[views[i]], wh - padding * 2, wh - padding * 2)
-        clicked = imgui.is_item_clicked()
-        hovered = imgui.is_item_hovered()
-        scrolling = imgui.get_io().mouse_wheel
-        if views[i] == "axial" and clicked:
-            ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(0, 0, 0)))
-            ctx.tools.set_plane_all(planes[i])
-        if views[i] == "coronal" and clicked:
-            ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(-90, 180, 0)))
-            ctx.tools.set_plane_all(planes[i])
-        if views[i] == "sagital" and clicked:
-            ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(-90, 90, 0)))
-            ctx.tools.set_plane_all(planes[i])
-        if hovered and scrolling:
-            # This implements a form of quick-scroll when the user scrolls
-            # over the miniature view in the navigator
-            steps = max(1.0, ctx.volume.shape[i] / 25.0)
-            ctx.mpr.scroll_by_axis(ctx.volume, planes[i], scrolling * steps)
+        imgui.image(ctx.textures[views[i]], tile_size - padding * 2, tile_size - padding * 2)
+        image_pos, image_size = imgui.get_item_rect_min(), imgui.get_item_rect_size()
         if i < 2:
             imgui.spacing()
+
+        hovered = imgui.is_item_hovered()
+        delta = imgui.get_io().mouse_delta
+        dragging = hovered and imgui.is_mouse_down()
+        dblclick = hovered and imgui.is_mouse_double_clicked()
+        scrolling = hovered and imgui.get_io().mouse_wheel
+
+        # TODO: This could need a bit of refactoring...
+        if views[i] == "axial" and dblclick:
+            ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(0, 0, 0)))
+            ctx.tools.set_plane_all(planes[i])
+            ctx.tools.cancel_drawing_all()
+        if views[i] == "coronal" and dblclick:
+            ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(-90, 180, 0)))
+            ctx.tools.set_plane_all(planes[i])
+            ctx.tools.cancel_drawing_all()
+        if views[i] == "sagital" and dblclick:
+            ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(-90, 90, 0)))
+            ctx.tools.set_plane_all(planes[i])
+            ctx.tools.cancel_drawing_all()
+
+        if dragging and max(abs(delta.x), abs(delta.y)) < 10:
+            # Note: need to check delta's magnitude, since this value can be
+            # very large if the window is not in focus
+            xindex, yindex = xy_mapping[i]
+            steps_x = (float(delta.x) / image_size.x) * ctx.volume.shape[xindex]
+            steps_y = (float(delta.y) / image_size.y) * ctx.volume.shape[yindex]
+            ctx.mpr.scroll_by_axis(ctx.volume, planes[xindex], steps_x)
+            ctx.mpr.scroll_by_axis(ctx.volume, planes[yindex], steps_y)
+            ctx.tools.cancel_drawing_all()
+
+        if scrolling:
+            # Clamp step size so that we always scroll at most 1 voxel
+            steps = max(-1.0, min(1.0, scrolling))
+            ctx.mpr.scroll_by_axis(ctx.volume, planes[i], steps)
+            ctx.tools.cancel_drawing_all()
+
+        draw_list = imgui.get_window_draw_list()
+        draw_list_add_mpr_lines(draw_list, *image_pos, *image_size, ctx.mpr, i)
     imgui.end()
 
 
@@ -542,8 +602,8 @@ def show_volume_stats(ctx):
     imgui.set_next_window_bg_alpha(0.8)
 
     flags = imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_COLLAPSE | imgui.WINDOW_NO_TITLE_BAR
-    _, ctx.settings.show_stats = imgui.begin("Volume statistics", closable=True, flags=flags)
-    imgui.text("Volume statistics")
+    _, ctx.settings.show_stats = imgui.begin("Volume info", closable=True, flags=flags)
+    imgui.text("Volume info")
     imgui.spacing()
     imgui.indent(5)
     imgui.text("Dimensions (voxels): %d %d %d" % tuple(ctx.header["dimensions"]))
@@ -563,7 +623,7 @@ def show_volume_stats(ctx):
 
 def show_input_guide(ctx):
     sf = imgui.get_io().font_global_scale
-    imgui.set_next_window_size(250 * sf, 240 * sf)
+    imgui.set_next_window_size(250 * sf, 260 * sf)
     if ctx.settings.show_stats:
         imgui.set_next_window_position(ctx.width - 250 * sf, (18 + 120) * sf)
     else:
@@ -575,9 +635,9 @@ def show_input_guide(ctx):
     imgui.text("Quick reference")
     imgui.spacing()
     imgui.indent(5)
-    imgui.text("Left mouse: Paint/draw/grab")
-    imgui.text("Right mouse: Rotate view")
-    imgui.text("Middle mouse: Pan view")
+    imgui.text("Left button: Paint/draw/grab")
+    imgui.text("Middle button: Rotate view")
+    imgui.text("Right button: Pan view")
     imgui.text("Scroll: Zoom view")
     imgui.text("Shift+Scroll: Scroll slices")
     imgui.text("Key 1: Show axial view")
@@ -585,6 +645,7 @@ def show_input_guide(ctx):
     imgui.text("Key 3: Show coronal view")
     imgui.text("Page up/down: Change label")
     imgui.text("Enter: Close polygon")
+    imgui.text("Escape: Cancel polygon")
     imgui.text("Space: Hide segmentation")
     imgui.text("Ctrl+z: Undo")
     imgui.unindent(5)
@@ -717,7 +778,7 @@ def show_gui(ctx):
         show_volume_stats(ctx)
     if ctx.settings.show_input_guide:
         show_input_guide(ctx)
-    if ctx.settings.show_navigator:
+    if ctx.settings.show_navigator and max(ctx.volume.shape) > 1:
         show_navigator(ctx)
 
 
@@ -789,7 +850,7 @@ def key_callback(window, key, scancode, action, mods):
     if key == glfw.KEY_ESCAPE:  # Cancel polygon or livewire
         ctx.tools.cancel_drawing_all()
     if key == glfw.KEY_Z and (mods & glfw.MOD_CONTROL):
-        if action == glfw.PRESS:
+        if action == glfw.PRESS and not ctx.tools.is_active_any():
             ctx.cmds.pop_undo()
 
 
@@ -800,10 +861,10 @@ def mouse_button_callback(window, button, action, mods):
         return
 
     x, y = glfw.get_cursor_pos(window)
-    if button == glfw.MOUSE_BUTTON_RIGHT:
+    if button == glfw.MOUSE_BUTTON_MIDDLE:
         ctx.trackball.center = glm.vec2(x, y)
         # ctx.trackball.tracking = (action == glfw.PRESS)
-    if button == glfw.MOUSE_BUTTON_MIDDLE:
+    if button == glfw.MOUSE_BUTTON_RIGHT:
         ctx.panning.center = glm.vec2(x, y)
         ctx.panning.panning = action == glfw.PRESS
     if button == glfw.MOUSE_BUTTON_LEFT:

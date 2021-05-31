@@ -436,29 +436,20 @@ def draw_list_add_mpr_lines(draw_list, x, y, w, h, mpr, axis):
     planes = mpr.planes
     colors = [(0.5, 0.5, 1, 1), (0, 1, 0, 1), (1, 0, 0, 1)]
     if axis == 0:
-        px, py = (planes[0] + 0.5) * w, (planes[1] + 0.5) * h
-        draw_list.add_line(
-            x + px, y, x + px, y + h, imgui.get_color_u32_rgba(*colors[2]), thickness=1.5
-        )
-        draw_list.add_line(
-            x, y + py, x + w, y + py, imgui.get_color_u32_rgba(*colors[1]), thickness=1.5
-        )
+        px = x + (planes[0] + 0.5) * w
+        py = y + (planes[1] + 0.5) * h
+        draw_list.add_line(px, y, px, y + h, imgui.get_color_u32_rgba(*colors[2]), thickness=1.5)
+        draw_list.add_line(x, py, x + w, py, imgui.get_color_u32_rgba(*colors[1]), thickness=1.5)
     if axis == 1:
-        px, py = (planes[0] + 0.5) * w, (planes[2] + 0.5) * h
-        draw_list.add_line(
-            x + px, y, x + px, y + h, imgui.get_color_u32_rgba(*colors[2]), thickness=1.5
-        )
-        draw_list.add_line(
-            x, y + py, x + w, y + py, imgui.get_color_u32_rgba(*colors[0]), thickness=1.5
-        )
+        px = x + (planes[0] + 0.5) * w
+        py = y + (planes[2] + 0.5) * h
+        draw_list.add_line(px, y, px, y + h, imgui.get_color_u32_rgba(*colors[2]), thickness=1.5)
+        draw_list.add_line(x, py, x + w, py, imgui.get_color_u32_rgba(*colors[0]), thickness=1.5)
     if axis == 2:
-        px, py = (planes[1] + 0.5) * w, (planes[2] + 0.5) * h
-        draw_list.add_line(
-            x + px, y, x + px, y + h, imgui.get_color_u32_rgba(*colors[1]), thickness=1.5
-        )
-        draw_list.add_line(
-            x, y + py, x + w, y + py, imgui.get_color_u32_rgba(*colors[0]), thickness=1.5
-        )
+        px = x + (planes[1] + 0.5) * w
+        py = y + (planes[2] + 0.5) * h
+        draw_list.add_line(px, y, px, y + h, imgui.get_color_u32_rgba(*colors[1]), thickness=1.5)
+        draw_list.add_line(x, py, x + w, py, imgui.get_color_u32_rgba(*colors[0]), thickness=1.5)
     draw_list.add_rect(
         x, y, x + w, y + h, imgui.get_color_u32_rgba(1.0, 1.0, 1.0, 0.5), thickness=1.0
     )

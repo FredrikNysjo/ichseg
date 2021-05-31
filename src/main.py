@@ -61,6 +61,9 @@ def do_initialize(ctx):
     ctx.images.load_volume_fromfile("")  # Create an empty volume and mask
     ctx.mpr.update_minmax_range_from_volume(ctx.images.volume)
 
+    # Set camera to default axial view (bottom view)
+    ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(180, 0, 0)))
+
     # TODO Placeholder images for XYZ views shown in the navigator
     axial_view = np.array([0, 0, 0], dtype=np.uint8).reshape((1, 1, 3))
     coronal_view = np.array([0, 0, 0], dtype=np.uint8).reshape((1, 1, 3))
@@ -119,7 +122,9 @@ def do_rendering(ctx):
     header = ctx.images.header
     spacing = glm.vec3(header["spacing"])
     extent = glm.vec3(header["spacing"]) * glm.vec3(header["dimensions"])
-    model = glm.scale(glm.mat4(1.0), extent / glm.max(extent.x, glm.max(extent.y, extent.z)))
+    model = (
+        glm.scale(glm.mat4(1.0), extent / glm.max(extent.x, glm.max(extent.y, extent.z)))
+    )
     mv = view * model
     mvp = proj * view * model
 
@@ -442,12 +447,12 @@ def draw_list_add_mpr_lines(draw_list, x, y, w, h, mpr, axis):
         draw_list.add_line(x, py, x + w, py, imgui.get_color_u32_rgba(*colors[1]), thickness=1.5)
     if axis == 1:
         px = x + (planes[0] + 0.5) * w
-        py = y + (planes[2] + 0.5) * h
+        py = y + h - (planes[2] + 0.5) * h
         draw_list.add_line(px, y, px, y + h, imgui.get_color_u32_rgba(*colors[2]), thickness=1.5)
         draw_list.add_line(x, py, x + w, py, imgui.get_color_u32_rgba(*colors[0]), thickness=1.5)
     if axis == 2:
         px = x + (planes[1] + 0.5) * w
-        py = y + (planes[2] + 0.5) * h
+        py = y + h - (planes[2] + 0.5) * h
         draw_list.add_line(px, y, px, y + h, imgui.get_color_u32_rgba(*colors[1]), thickness=1.5)
         draw_list.add_line(x, py, x + w, py, imgui.get_color_u32_rgba(*colors[0]), thickness=1.5)
     draw_list.add_rect(
@@ -483,15 +488,18 @@ def show_navigator(ctx):
 
         # TODO: This could need a bit of refactoring...
         if views[i] == "axial" and dblclick:
-            ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(0, 0, 0)))
-            ctx.tools.set_plane_all(planes[i])
-            ctx.tools.cancel_drawing_all()
-        if views[i] == "coronal" and dblclick:
-            ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(-90, 180, 0)))
+            # Show axial view (bottom view)
+            ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(180, 0, 0)))
             ctx.tools.set_plane_all(planes[i])
             ctx.tools.cancel_drawing_all()
         if views[i] == "sagital" and dblclick:
-            ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(-90, 90, 0)))
+            # Show sagital view (left side view)
+            ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(-90, -90, 0)))
+            ctx.tools.set_plane_all(planes[i])
+            ctx.tools.cancel_drawing_all()
+        if views[i] == "coronal" and dblclick:
+            # Show coronal view (front view)
+            ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(-90, 0, 0)))
             ctx.tools.set_plane_all(planes[i])
             ctx.tools.cancel_drawing_all()
 
@@ -501,6 +509,8 @@ def show_navigator(ctx):
             xindex, yindex = xy_mapping[i]
             steps_x = (float(delta.x) / image_size.x) * ctx.images.volume.shape[xindex]
             steps_y = (float(delta.y) / image_size.y) * ctx.images.volume.shape[yindex]
+            if views[i] == "sagital" or views[i] == "coronal":
+                steps_y = -steps_y   # We need to flip the y-direction for these views
             ctx.mpr.scroll_by_axis(ctx.images.volume, planes[xindex], steps_x)
             ctx.mpr.scroll_by_axis(ctx.images.volume, planes[yindex], steps_y)
             ctx.tools.cancel_drawing_all()
@@ -749,14 +759,14 @@ def key_callback(window, key, scancode, action, mods):
         # Note: some keyboards will repeat action keys, so must check for that
         # case as well
         ctx.mpr.scrolling = action == glfw.PRESS or action == glfw.REPEAT
-    if key == glfw.KEY_1:  # Show top-view
-        ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(0, 0, 0)))
+    if key == glfw.KEY_1:  # Show axial view (bottom view)
+        ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(180, 0, 0)))
         ctx.tools.set_plane_all(gfx_mpr.MPR_PLANE_Z)
-    if key == glfw.KEY_2:  # Show side-view
-        ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(-90, 90, 0)))
+    if key == glfw.KEY_2:  # Show sagital view (left side view)
+        ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(-90, -90, 0)))
         ctx.tools.set_plane_all(gfx_mpr.MPR_PLANE_X)
-    if key == glfw.KEY_3:  # Show front-view
-        ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(-90, 180, 0)))
+    if key == glfw.KEY_3:  # Show coronal view (front view)
+        ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(-90, 0, 0)))
         ctx.tools.set_plane_all(gfx_mpr.MPR_PLANE_Y)
     if key == glfw.KEY_PAGE_UP and action == glfw.PRESS:
         ctx.images.active_label = max(ctx.images.active_label - 1, 0)
@@ -786,7 +796,7 @@ def mouse_button_callback(window, button, action, mods):
     x, y = glfw.get_cursor_pos(window)
     if button == glfw.MOUSE_BUTTON_MIDDLE:
         ctx.trackball.center = glm.vec2(x, y)
-        # ctx.trackball.tracking = (action == glfw.PRESS)
+        ctx.trackball.tracking = (action == glfw.PRESS)
     if button == glfw.MOUSE_BUTTON_RIGHT:
         ctx.panning.center = glm.vec2(x, y)
         ctx.panning.panning = action == glfw.PRESS

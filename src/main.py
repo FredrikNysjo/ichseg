@@ -32,6 +32,7 @@ class Settings:
         self.show_mask = True
         self.fov_degrees = 45.0
         self.projection_mode = 1  # 0=orthographic; 1=perspective
+        self.view_mode = 0  # 0=2D (fixed views); 1=3D (free rotation)
         self.show_stats = False
         self.show_navigator = True
         self.show_input_guide = False
@@ -122,9 +123,7 @@ def do_rendering(ctx):
     header = ctx.images.header
     spacing = glm.vec3(header["spacing"])
     extent = glm.vec3(header["spacing"]) * glm.vec3(header["dimensions"])
-    model = (
-        glm.scale(glm.mat4(1.0), extent / glm.max(extent.x, glm.max(extent.y, extent.z)))
-    )
+    model = glm.scale(glm.mat4(1.0), extent / glm.max(extent.x, glm.max(extent.y, extent.z)))
     mv = view * model
     mvp = proj * view * model
 
@@ -510,7 +509,7 @@ def show_navigator(ctx):
             steps_x = (float(delta.x) / image_size.x) * ctx.images.volume.shape[xindex]
             steps_y = (float(delta.y) / image_size.y) * ctx.images.volume.shape[yindex]
             if views[i] == "sagital" or views[i] == "coronal":
-                steps_y = -steps_y   # We need to flip the y-direction for these views
+                steps_y = -steps_y  # We need to flip the y-direction for these views
             ctx.mpr.scroll_by_axis(ctx.images.volume, planes[xindex], steps_x)
             ctx.mpr.scroll_by_axis(ctx.images.volume, planes[yindex], steps_y)
             ctx.tools.cancel_drawing_all()
@@ -668,9 +667,10 @@ def show_tools_settings(ctx):
 
 def show_viewing_settings(ctx):
     """Show widgets for viewing settings"""
-    mpr = ctx.mpr
-    _, mpr.enabled = imgui.checkbox("Show MPR", mpr.enabled)
-    _, mpr.show_voxels = imgui.checkbox("Show voxels", mpr.show_voxels)
+    _, ctx.settings.view_mode = imgui.combo("View mode", ctx.settings.view_mode, ["2D", "3D"])
+    # TODO Should we snap to a fixed view if the user switches from 3D to 2D?
+    _, ctx.mpr.enabled = imgui.checkbox("Show MPR", ctx.mpr.enabled)
+    _, ctx.mpr.show_voxels = imgui.checkbox("Show voxels", ctx.mpr.show_voxels)
 
 
 def show_misc_settings(ctx):
@@ -795,8 +795,9 @@ def mouse_button_callback(window, button, action, mods):
 
     x, y = glfw.get_cursor_pos(window)
     if button == glfw.MOUSE_BUTTON_MIDDLE:
-        ctx.trackball.center = glm.vec2(x, y)
-        ctx.trackball.tracking = (action == glfw.PRESS)
+        if ctx.settings.view_mode == 1:  # 3D view mode
+            ctx.trackball.center = glm.vec2(x, y)
+            ctx.trackball.tracking = (action == glfw.PRESS)
     if button == glfw.MOUSE_BUTTON_RIGHT:
         ctx.panning.center = glm.vec2(x, y)
         ctx.panning.panning = action == glfw.PRESS

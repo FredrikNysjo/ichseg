@@ -2,6 +2,13 @@ import numpy as np
 import PilLite.Image
 
 
+def create_dummy_volume():
+    """Create an empty dummy volume (and header) in right format"""
+    volume = np.zeros([1, 1, 1], dtype=np.int16)
+    header = {"dimensions": (1, 1, 1), "spacing": (1, 1, 1)}
+    return volume, header
+
+
 def load_image(filename):
     """Load 2D image stored in common format (png, jpg, etc.) on disk"""
     image = PilLite.Image.open(filename)
@@ -12,8 +19,7 @@ def load_vtk(filename):
     """Load volume stored in legacy VTK format on disk. Currently only
     supports scalar data stored in binary format (not ASCII).
     """
-    volume = None
-    header = {}
+    volume, header = None, {}
     with open(filename, "rb") as stream:
         line = stream.readline()
         while line != None:

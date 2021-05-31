@@ -26,6 +26,15 @@ class MPR:
         elif preset_name != "Custom":
             self.level_range = [v for v in preset_range]
 
+    def update_minmax_range_from_volume(self, volume):
+        """Calculate and update MPR minmax range from volume
+
+        This will also update the current MPR level range
+        """
+        self.minmax_range[0] = np.min(volume)
+        self.minmax_range[1] = np.max(volume)
+        self.update_level_range()
+
     def scroll_by_ray(self, volume, ray_dir, steps):
         """Scroll MPR a number of positive or negative steps along axis determined
         by the largest absolute component of the ray direction

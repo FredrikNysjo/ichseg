@@ -1,4 +1,5 @@
 import cmd_manager
+import cmd_volume
 import gfx_mpr
 import gfx_manager
 import gfx_shaders
@@ -41,41 +42,17 @@ class Settings:
 class Context:
     def __init__(self):
         self.settings = Settings()
-        # Resource managers
+
+        # Managers for resources and undo stack
         self.gfx = gfx_manager.GfxManager()
         self.images = image_manager.ImageManager()
         self.tools = tool_manager.ToolManager()
         self.cmds = cmd_manager.CmdManager()
+
         # Other utilities for interaction, etc.
         self.trackball = gfx_utils.Trackball()
         self.panning = gfx_utils.Panning()
         self.mpr = gfx_mpr.MPR()
-
-
-class UpdateVolumeCmd:
-    def __init__(self, volume_, subimage_, offset_, texture_=0):
-        self.volume = volume_
-        self.subimage = subimage_
-        self.offset = offset_
-        self.texture = texture_
-        self._prev_subimage = None
-
-    def apply(self):
-        x, y, z = self.offset
-        d, h, w = self.subimage.shape
-        self._prev_subimage = np.copy(self.volume[z : z + d, y : y + h, x : x + w])
-        self.volume[z : z + d, y : y + h, x : x + w] = self.subimage
-        if self.texture:
-            gfx_utils.update_subtexture_3d(self.texture, self.subimage, self.offset)
-        return self
-
-    def undo(self):
-        x, y, z = self.offset
-        d, h, w = self.subimage.shape
-        self.volume[z : z + d, y : y + h, x : x + w] = self._prev_subimage
-        if self.texture:
-            gfx_utils.update_subtexture_3d(self.texture, self._prev_subimage, self.offset)
-        return self
 
 
 def do_initialize(ctx):
@@ -248,7 +225,7 @@ def do_rendering(ctx):
             if brush.frame_count == 0:
                 # Store full copy of current segmentation for undo
                 mask_copy = np.copy(ctx.images.mask)
-                cmd = UpdateVolumeCmd(
+                cmd = cmd_volume.UpdateVolumeCmd(
                     ctx.images.mask, mask_copy, (0, 0, 0), ctx.gfx.textures["mask"]
                 )
                 ctx.cmds.push_apply(cmd)
@@ -262,7 +239,7 @@ def do_rendering(ctx):
             if smartbrush.frame_count == 0:
                 # Store full copy of current segmentation for undo
                 mask_copy = np.copy(ctx.images.mask)
-                cmd = UpdateVolumeCmd(
+                cmd = cmd_volume.UpdateVolumeCmd(
                     ctx.images.mask, mask_copy, (0, 0, 0), ctx.gfx.textures["mask"]
                 )
                 ctx.cmds.push_apply(cmd)
@@ -332,7 +309,9 @@ def do_update(ctx):
         # Rasterise polygon into mask image
         result = polygon.apply(ctx.images.mask, tool_op)
         if result:
-            cmd = UpdateVolumeCmd(ctx.images.mask, result[0], result[1], ctx.gfx.textures["mask"])
+            cmd = cmd_volume.UpdateVolumeCmd(
+                ctx.images.mask, result[0], result[1], ctx.gfx.textures["mask"]
+            )
             ctx.cmds.push_apply(cmd)
         # Clean up for drawing next polygon
         tools.cancel_drawing_all()
@@ -343,7 +322,9 @@ def do_update(ctx):
         # Rasterise livewire into mask image
         result = livewire.apply(ctx.images.mask, tool_op)
         if result:
-            cmd = UpdateVolumeCmd(ctx.images.mask, result[0], result[1], ctx.gfx.textures["mask"])
+            cmd = cmd_volume.UpdateVolumeCmd(
+                ctx.images.mask, result[0], result[1], ctx.gfx.textures["mask"]
+            )
             ctx.cmds.push_apply(cmd)
         # Clean up for drawing next livewire
         tools.cancel_drawing_all()
@@ -432,7 +413,9 @@ def show_menubar(ctx):
                 ctx.cmds.clear_stack()
         if imgui.menu_item("Clear segmentation")[0]:
             zeros = np.zeros(ctx.images.mask.shape, dtype=ctx.images.mask.dtype)
-            cmd = UpdateVolumeCmd(ctx.images.mask, zeros, (0, 0, 0), ctx.gfx.textures["mask"])
+            cmd = cmd_volume.UpdateVolumeCmd(
+                ctx.images.mask, zeros, (0, 0, 0), ctx.gfx.textures["mask"]
+            )
             ctx.cmds.push_apply(cmd)
         imgui.end_menu()
     if imgui.begin_menu("Tools"):

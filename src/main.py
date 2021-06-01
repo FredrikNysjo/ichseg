@@ -9,6 +9,7 @@ import image_manager
 import image_utils
 from tool_common import *
 import tool_manager
+import ui_utils
 
 import glfw
 import OpenGL.GL as gl
@@ -16,9 +17,6 @@ import numpy as np
 import glm
 import imgui
 from imgui.integrations.glfw import GlfwRenderer
-import tkinter as tk
-import tkinter.filedialog
-import tkinter.messagebox
 
 import os
 import copy
@@ -339,33 +337,23 @@ def do_update(ctx):
 
 
 def show_file_selection():
-    root = tk.Tk()
-    root.withdraw()  # Hide Tk window
-    filepath = tk.filedialog.askopenfilename(filetypes=[("Volume file", ".vtk .dcm")])
+    filepath = ui_utils.askopenfilename([("Volume file", ".vtk .dcm")])
     return filepath
 
 
 def show_save_selection():
-    root = tk.Tk()
-    root.withdraw()  # Hide Tk window
-    filepath = tk.filedialog.asksaveasfilename(
-        filetypes=[("VTK image", ".vtk")], defaultextension=".vtk"
-    )
+    filepath = ui_utils.asksaveasfilename([("VTK image", ".vtk")], defaultextension=".vtk")
     return filepath
 
 
 def show_resample_orientation_dialog():
-    root = tk.Tk()
-    root.withdraw()  # Hide Tk window
     msg = "Warning: this will change the volume resolution and clear any current segmentation"
-    return tk.messagebox.askokcancel("Resample orientation", msg)
+    return ui_utils.askokcancel("Resample orientation", msg)
 
 
 def show_quit_dialog():
-    root = tk.Tk()
-    root.withdraw()  # Hide Tk window
     msg = "Warning: this will lose any unsaved changes to the current segmentation"
-    return tk.messagebox.askokcancel("Quit", msg)
+    return ui_utils.askokcancel("Quit", msg)
 
 
 def show_menubar(ctx):

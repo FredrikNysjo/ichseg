@@ -43,6 +43,10 @@ def load_vtk(filename):
                     dt = np.dtype(np.int16).newbyteorder(">")
                     volume = np.frombuffer(stream.read(), dtype=dt).reshape(dim)
                     volume = volume.astype(dtype=np.int16)  # Reorder bytes
+                elif header["format"] == "unsigned_short":
+                    dt = np.dtype(np.uint16).newbyteorder(">")
+                    volume = np.frombuffer(stream.read(), dtype=dt).reshape(dim)
+                    volume = volume.astype(dtype=np.uint16)  # Reorder bytes
                 elif header["format"] == "float":
                     dt = np.dtype(np.float32).newbyteorder(">")
                     volume = np.frombuffer(stream.read(), dtype=dt).reshape(dim)
@@ -75,6 +79,10 @@ def save_vtk(filename, volume, header):
         elif header["format"] == "short":
             assert volume.dtype == np.int16
             dt = np.dtype(np.int16).newbyteorder(">")
+            stream.write(volume.astype(dtype=dt))
+        elif header["format"] == "unsigned_short":
+            assert volume.dtype == np.uint16
+            dt = np.dtype(np.uint16).newbyteorder(">")
             stream.write(volume.astype(dtype=dt))
         elif header["format"] == "float":
             assert volume.dtype == np.float32

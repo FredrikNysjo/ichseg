@@ -61,3 +61,16 @@ class MPR:
         y = (np.floor(y) + 0.5) / volume.shape[1] - 0.5
         z = (np.floor(z) + 0.5) / volume.shape[0] - 0.5
         return [x, y, z]
+
+    def get_level_range_scaled(self, volume):
+        """Return copy of level range scaled and shifted to take normalized
+        texture formats into account, based on the volume's scalar type
+        """
+        scale, shift = (1.0, 0.0)
+        if volume.dtype == np.uint8:
+            scale, shift = (1.0 / 255.0, 0.0)  # Scale to range [0,1]
+        elif volume.dtype == np.int16:
+            scale, shift = (1.0 / 32767.0, 0.0)  # Scale to range [-1,1]
+        elif volume.dtype == np.uint16:
+            scale, shift = (1.0 / 65535.0, 0.0)  # Scale to range [0,1]
+        return [(v + shift) * scale for v in self.level_range]

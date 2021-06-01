@@ -101,11 +101,7 @@ def do_rendering(ctx):
 
     mpr_planes = ctx.mpr.get_snapped_planes(ctx.images.volume)
     level_range = ctx.mpr.level_range
-    level_range_scaled = level_range  # Adjusted for normalized texture formats
-    if ctx.images.volume.dtype == np.uint8:
-        level_range_scaled = [v / 255.0 for v in level_range]  # Scale to range [0,1]
-    if ctx.images.volume.dtype == np.int16:
-        level_range_scaled = [v / 32767.0 for v in level_range]  # Scale to range [-1,1]
+    level_range_scaled = ctx.mpr.get_level_range_scaled(ctx.images.volume)
     filter_mode = gl.GL_NEAREST if ctx.mpr.show_voxels else gl.GL_LINEAR
 
     aspect = float(ctx.gfx.width) / ctx.gfx.height
@@ -785,7 +781,7 @@ def mouse_button_callback(window, button, action, mods):
     if button == glfw.MOUSE_BUTTON_MIDDLE:
         if ctx.settings.view_mode == 1:  # 3D view mode
             ctx.trackball.center = glm.vec2(x, y)
-            ctx.trackball.tracking = (action == glfw.PRESS)
+            ctx.trackball.tracking = action == glfw.PRESS
     if button == glfw.MOUSE_BUTTON_RIGHT:
         ctx.panning.center = glm.vec2(x, y)
         ctx.panning.panning = action == glfw.PRESS

@@ -1,4 +1,5 @@
 import image_utils
+import image_nifti
 import image_dicom
 
 import numpy as np
@@ -18,6 +19,8 @@ class ImageManager:
         self.current, self.label = 0, 0
         if ".vtk" in filename:
             self.volume, self.header = image_utils.load_vtk(filename)
+        elif ".nii" in filename:
+            self.volume, self.header = image_nifti.load_nii(filename)
         elif filename:  # Assume format is DICOM
             self.volume, self.header = image_dicom.load_dicom(filename)
         else:

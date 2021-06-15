@@ -333,7 +333,7 @@ def do_update(ctx):
 
 
 def show_file_selection():
-    filepath = ui_utils.askopenfilename([("Volume file", ".vtk .dcm")])
+    filepath = ui_utils.askopenfilename([("Volume file", ".vtk .nii .nii.gz .dcm")])
     return filepath
 
 

@@ -6,13 +6,14 @@ import gzip
 
 def load_nii(filename):
     """Load volume stored in NIfTI format on disk. Currently only
-    supports single-file .nii files.
+    supports single-file .nii and .nii.gz files, and the following
+    scalar type formats: uint8; int16/uint16; and float32.
     """
     volume, header = None, {}
     nii_open = gzip.open if ".gz" in filename else open
     with nii_open(filename, "rb") as stream:
         # Read header part (relevant fields only)
-        hdr = stream.read(348)
+        hdr = stream.read(348)  # Header is always 348 bytes
         hdr_dim = struct.unpack_from("hhhhhhhh", hdr, 40)
         (hdr_datatype,) = struct.unpack_from("h", hdr, 70)
         (hdr_bitpix,) = struct.unpack_from("h", hdr, 72)

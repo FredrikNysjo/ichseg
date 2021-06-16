@@ -6,6 +6,7 @@ import gfx_shaders
 import gfx_utils
 import image_dicom
 import image_manager
+import image_nifti
 import image_utils
 from tool_common import *
 import tool_manager
@@ -338,7 +339,9 @@ def show_file_selection():
 
 
 def show_save_selection():
-    filepath = ui_utils.asksaveasfilename([("VTK image", ".vtk")], defaultextension=".vtk")
+    filepath = ui_utils.asksaveasfilename(
+        [("Volume file", ".vtk .nii .nii.gz")], defaultextension=".vtk"
+    )
     return filepath
 
 
@@ -368,8 +371,10 @@ def show_menubar(ctx):
                 ctx.tools.cancel_drawing_all()
         if imgui.menu_item("Save volume...")[0]:
             filename = show_save_selection()
-            if filename:
+            if filename and ".vtk" in filename:
                 image_utils.save_vtk(filename, ctx.images.volume, ctx.images.header)
+            elif filename and ".nii" in filename:
+                image_nifti.save_nii(filename, ctx.images.volume, ctx.images.header)
         if imgui.menu_item("Open segmentation...")[0]:
             filename = show_file_selection()
             if filename:
@@ -381,10 +386,12 @@ def show_menubar(ctx):
                 ctx.tools.cancel_drawing_all()
         if imgui.menu_item("Save segmentation...")[0]:
             filename = show_save_selection()
-            if filename:
-                mask_header = copy.deepcopy(ctx.images.header)
-                mask_header["format"] = "unsigned_char"
+            mask_header = copy.deepcopy(ctx.images.header)
+            mask_header["format"] = "unsigned_char"
+            if filename and ".vtk" in filename:
                 image_utils.save_vtk(filename, ctx.images.mask, mask_header)
+            elif filename and ".nii" in filename:
+                image_nifti.save_nii(filename, ctx.images.mask, mask_header)
         if imgui.menu_item("Quit")[0]:
             if show_quit_dialog():
                 glfw.set_window_should_close(ctx.gfx.window, glfw.TRUE)

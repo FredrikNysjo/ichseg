@@ -53,3 +53,46 @@ def load_nii(filename):
         else:
             assert False, "Scalar type not supported: Unknown NIfTI datatype: " + hdr_datatype
     return volume, header
+
+
+def save_nii(filename, volume, header):
+    """Save volume to be stored in NIfTI format on disk. Currently only
+    supports single-file .nii and .nii.gz files, and the following
+    scalar type formats: uint8; int16/uint16; and float32.
+    """
+    nii_open = gzip.open if ".gz" in filename else open
+    with nii_open(filename, "wb") as stream:
+        # Convert internal header format to NIfTI fields
+        hdr_dim = [3, *header["dimensions"], 0, 0, 0, 0]
+        hdr_pixdim = [1, *header["spacing"], 0, 0, 0, 0]
+        hdr_vox_offset = 352.0  # OBS! Has to be a float!
+
+        # Find which NIfTI scalar format we should use
+        if header["format"] == "unsigned_char":
+            assert volume.dtype == np.uint8
+            hdr_datatype, hdr_bitpix = 2, 8
+        elif header["format"] == "short":
+            assert volume.dtype == np.int16
+            hdr_datatype, hdr_bitpix = 4, 16
+        elif header["format"] == "unsigned_short":
+            assert volume.dtype == np.uint16
+            hdr_datatype, hdr_bitpix = 512, 16
+        elif header["format"] == "float":
+            assert volume.dtype == np.float32
+            hdr_datatype, hdr_bitpix = 16, 32
+        else:
+            assert False, "Scalar type not supported: " + header["format"]
+
+        # Write header part (relevant fields only)
+        hdr = bytearray(348)  # Header is always 348 bytes
+        struct.pack_into("i", hdr, 0, 348)
+        struct.pack_into("hhhhhhhh", hdr, 40, *hdr_dim)
+        struct.pack_into("h", hdr, 70, hdr_datatype)
+        struct.pack_into("h", hdr, 72, hdr_bitpix)
+        struct.pack_into("ffffffff", hdr, 76, *hdr_pixdim)
+        struct.pack_into("f", hdr, 108, hdr_vox_offset)
+        struct.pack_into("i", hdr, 344, 0x6e2b3100)  # Magic string
+        stream.write(hdr + b"\0\0\0\0")  # Pad to match vox_offset
+
+        # Write volume part (voxel byte data)
+        stream.write(volume)

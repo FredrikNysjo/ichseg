@@ -839,6 +839,19 @@ def scroll_callback(window, xoffset, yoffset):
         ctx.settings.fov_degrees = max(5.0, min(90.0, ctx.settings.fov_degrees))
 
 
+def drop_callback(window, paths):
+    ctx = glfw.get_window_user_pointer(window)
+    if len(paths) == 1:
+        filename = paths[0]
+        if ".vtk" in filename or ".nii" in filename or ".dcm" in filename:
+            ctx.images.load_volume_fromfile(filename)
+            ctx.cmds.clear_stack()  # Clear undo history
+            ctx.mpr.update_minmax_range_from_volume(ctx.images.volume)
+            gfx_utils.update_texture_3d(ctx.gfx.textures["volume"], ctx.images.volume)
+            gfx_utils.update_texture_3d(ctx.gfx.textures["mask"], ctx.images.mask)
+            ctx.tools.cancel_drawing_all()
+
+
 def resize_callback(window, w, h):
     ctx = glfw.get_window_user_pointer(window)
     ctx.gfx.width = max(1, w - ctx.gfx.sidebar_width)
@@ -865,6 +878,7 @@ def main():
     glfw.set_mouse_button_callback(ctx.gfx.window, mouse_button_callback)
     glfw.set_cursor_pos_callback(ctx.gfx.window, cursor_pos_callback)
     glfw.set_scroll_callback(ctx.gfx.window, scroll_callback)
+    glfw.set_drop_callback(ctx.gfx.window, drop_callback)
     glfw.make_context_current(ctx.gfx.window)
     print("GL version: %s" % gl.glGetString(gl.GL_VERSION).decode())
 

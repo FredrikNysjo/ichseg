@@ -33,7 +33,7 @@ def load_vtk(filename):
             if strings[0] == "POINT_DATA":
                 header["num_points"] = int(strings[1])
             if strings[0] == "SCALARS":
-                header["format"] = strings[2]
+                header["format"] = strings[2].strip()
             if strings[0] == "LOOKUP_TABLE":
                 dim = header["dimensions"][::-1]
                 if header["format"] == "unsigned_char":

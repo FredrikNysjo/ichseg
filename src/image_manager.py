@@ -33,11 +33,14 @@ class ImageManager:
         If the grayscale volume we are segmenting does not match the size
         of the loaded mask, a new empty volume will be created
 
-        Currently, only 8-bit masks in VTK format are supported
+        Currently, only 8-bit masks in VTK or NIfTI format are supported
         """
-        if ".vtk" not in filename:
-            return
-        mask, mask_header = image_utils.load_vtk(filename)
+        if ".vtk" in filename:
+            mask, mask_header = image_utils.load_vtk(filename)
+        elif ".nii" in filename:
+            mask, mask_header = image_nifti.load_nii(filename)
+        else:
+            return  # TODO Should we create an empty mask here instead?
         if mask.dtype == np.uint8:
             if mask.shape != self.volume.shape:
                 self.header = mask_header

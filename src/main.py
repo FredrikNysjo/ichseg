@@ -830,12 +830,12 @@ def scroll_callback(window, xoffset, yoffset):
 
     if ctx.mpr.scrolling:
         ray_dir = glm.vec3(glm.inverse(glm.mat4_cast(ctx.trackball.quat))[2])
-        ctx.mpr.scroll_by_ray(ctx.images.volume, ray_dir, yoffset)
+        ctx.mpr.scroll_by_ray(ctx.images.volume, ray_dir, -yoffset)
         # Cancel all drawing in case the user was drawing a polygon or livewire
         # on the MPR plane while scrolling
         ctx.tools.cancel_drawing_all()
     else:
-        ctx.settings.fov_degrees += 2.0 * yoffset
+        ctx.settings.fov_degrees -= 2.0 * yoffset
         ctx.settings.fov_degrees = max(5.0, min(90.0, ctx.settings.fov_degrees))
 
 

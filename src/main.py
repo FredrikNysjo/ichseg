@@ -400,7 +400,7 @@ def show_menubar(ctx):
         if imgui.menu_item("Undo (Ctrl+z)")[0] and not ctx.tools.is_active_any():
             ctx.cmds.pop_undo()
         if imgui.menu_item("Resample orientation...")[0]:
-            if show_resample_orientation_dialog():
+            if show_resample_orientation_dialog() and max(ctx.images.volume.shape) > 1:
                 ctx.images.resample_volume()
                 gfx_utils.update_texture_3d(ctx.gfx.textures["volume"], ctx.images.volume)
                 gfx_utils.update_texture_3d(ctx.gfx.textures["mask"], ctx.images.mask)

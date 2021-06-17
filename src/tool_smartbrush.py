@@ -12,7 +12,7 @@ class SmartBrushTool:
     def __init__(self):
         self.position = glm.vec4(0.0)
         self.size = 30
-        self.sensitivity = 3.0
+        self.sensitivity = 5.0
         self.delta_scaling = 2.0
         self.enabled = False
         self.painting = False

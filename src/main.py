@@ -450,6 +450,25 @@ def draw_list_add_mpr_lines(draw_list, x, y, w, h, mpr, axis):
     )
 
 
+def snap_view_to_plane(ctx, plane):
+    """Snap view to one of the MPR planes
+
+    This also saves the plane index so that we can snap back from 3D viewing
+    """
+    if plane == gfx_mpr.MPR_PLANE_Z:
+        ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(180, 0, 0)))
+        ctx.tools.set_plane_all(gfx_mpr.MPR_PLANE_Z)
+    elif plane == gfx_mpr.MPR_PLANE_X:
+        ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(-90, -90, 0)))
+        ctx.tools.set_plane_all(gfx_mpr.MPR_PLANE_X)
+    elif plane == gfx_mpr.MPR_PLANE_Y:
+        ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(-90, 0, 0)))
+        ctx.tools.set_plane_all(gfx_mpr.MPR_PLANE_Y)
+    else:
+        assert False, "Invalid MPR plane index: " + plane
+    ctx.mpr.last_plane = plane  # Save plane index
+
+
 def show_navigator(ctx):
     """Show a navigator window with axial, coronal, and sagital views"""
     sf = imgui.get_io().font_global_scale
@@ -476,21 +495,9 @@ def show_navigator(ctx):
         dblclick = hovered and imgui.is_mouse_double_clicked()
         scrolling = hovered and imgui.get_io().mouse_wheel
 
-        # TODO: This could need a bit of refactoring...
-        if views[i] == "axial" and dblclick:
-            # Show axial view (bottom view)
-            ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(180, 0, 0)))
-            ctx.tools.set_plane_all(planes[i])
-            ctx.tools.cancel_drawing_all()
-        if views[i] == "sagital" and dblclick:
-            # Show sagital view (left side view)
-            ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(-90, -90, 0)))
-            ctx.tools.set_plane_all(planes[i])
-            ctx.tools.cancel_drawing_all()
-        if views[i] == "coronal" and dblclick:
-            # Show coronal view (front view)
-            ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(-90, 0, 0)))
-            ctx.tools.set_plane_all(planes[i])
+        if dblclick:
+            # Snap the main view to one of the MPR planes
+            snap_view_to_plane(ctx, planes[i])
             ctx.tools.cancel_drawing_all()
 
         if dragging and max(abs(delta.x), abs(delta.y)) < 10:
@@ -562,8 +569,8 @@ def show_input_guide(ctx):
     imgui.text("Scroll: Zoom view")
     imgui.text("Shift+Scroll: Scroll slices")
     imgui.text("Key 1: Show axial view")
-    imgui.text("Key 2: Show sagital view")
-    imgui.text("Key 3: Show coronal view")
+    imgui.text("Key 2: Show coronal view")
+    imgui.text("Key 3: Show sagital view")
     imgui.text("Page up/down: Change label")
     imgui.text("Enter: Close polygon")
     imgui.text("Escape: Cancel polygon")
@@ -658,8 +665,10 @@ def show_tools_settings(ctx):
 
 def show_viewing_settings(ctx):
     """Show widgets for viewing settings"""
-    _, ctx.settings.view_mode = imgui.combo("View mode", ctx.settings.view_mode, ["2D", "3D"])
-    # TODO Should we snap to a fixed view if the user switches from 3D to 2D?
+    clicked, ctx.settings.view_mode = imgui.combo("View mode", ctx.settings.view_mode, ["2D", "3D"])
+    if clicked and ctx.settings.view_mode == 0:
+        # Snap view to the last plane when the user switches from 3D to 2D
+        snap_view_to_plane(ctx, ctx.mpr.last_plane)
     _, ctx.mpr.enabled = imgui.checkbox("Show MPR", ctx.mpr.enabled)
     _, ctx.mpr.show_voxels = imgui.checkbox("Show voxels", ctx.mpr.show_voxels)
 
@@ -751,14 +760,11 @@ def key_callback(window, key, scancode, action, mods):
         # case as well
         ctx.mpr.scrolling = action == glfw.PRESS or action == glfw.REPEAT
     if key == glfw.KEY_1:  # Show axial view (bottom view)
-        ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(180, 0, 0)))
-        ctx.tools.set_plane_all(gfx_mpr.MPR_PLANE_Z)
-    if key == glfw.KEY_2:  # Show sagital view (left side view)
-        ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(-90, -90, 0)))
-        ctx.tools.set_plane_all(gfx_mpr.MPR_PLANE_X)
-    if key == glfw.KEY_3:  # Show coronal view (front view)
-        ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(-90, 0, 0)))
-        ctx.tools.set_plane_all(gfx_mpr.MPR_PLANE_Y)
+        snap_view_to_plane(ctx, gfx_mpr.MPR_PLANE_Z)
+    if key == glfw.KEY_2:  # Show coronal view (front view)
+        snap_view_to_plane(ctx, gfx_mpr.MPR_PLANE_Y)
+    if key == glfw.KEY_3:  # Show sagital view (left side view)
+        snap_view_to_plane(ctx, gfx_mpr.MPR_PLANE_X)
     if key == glfw.KEY_PAGE_UP and action == glfw.PRESS:
         ctx.images.active_label = max(ctx.images.active_label - 1, 0)
     if key == glfw.KEY_PAGE_DOWN and action == glfw.PRESS:

@@ -16,6 +16,7 @@ class MPR:
         self.show_voxels = False
         self.enabled = True
         self.scrolling = False
+        self.last_plane = MPR_PLANE_Z
 
     def update_level_range(self):
         """Update MPR level range based on current preset and minmax range"""

@@ -208,11 +208,13 @@ def do_rendering(ctx):
     if ctx.mpr.enabled:
         x, y = glfw.get_cursor_pos(ctx.gfx.window)
         w, h = ctx.gfx.width, ctx.gfx.height
-        depth = gl.glReadPixels(x, (h - 1) - y, 1, 1, gl.GL_DEPTH_COMPONENT, gl.GL_FLOAT)
+        # depth = gl.glReadPixels(x, (h - 1) - y, 1, 1, gl.GL_DEPTH_COMPONENT, gl.GL_FLOAT)
+        depth = ctx.mpr.get_depth_from_raycasting(x, y, w, h, ctx.images.volume, mv, proj)
         ndc_pos = glm.vec3(0.0)
         ndc_pos.x = (float(x) / w) * 2.0 - 1.0
         ndc_pos.y = -((float(y) / h) * 2.0 - 1.0)
-        ndc_pos.z = depth[0][0] * 2.0 - 1.0
+        # ndc_pos.z = depth[0][0] * 2.0 - 1.0
+        ndc_pos.z = depth * 2.0 - 1.0
         view_pos = gfx_utils.reconstruct_view_pos(ndc_pos, proj)
         texcoord = glm.vec3(glm.inverse(mv) * glm.vec4(view_pos, 1.0)) + 0.5001
 

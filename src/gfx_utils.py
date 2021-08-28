@@ -209,3 +209,27 @@ def reconstruct_view_pos(ndc_pos, proj):
     """Reconstruct view-space position from NDC position and projection matrix"""
     view_pos = glm.inverse(proj) * glm.vec4(ndc_pos, 1.0)
     return glm.vec3(view_pos / view_pos.w)
+
+
+def intersect_box(ray_origin, ray_dir, aabb, epsilon=1e-5):
+    """Do ray-box intersection and return (tmin, tmax) on hit"""
+    t1 = (aabb[0] - ray_origin) / (ray_dir + epsilon)
+    t2 = (aabb[1] - ray_origin) / (ray_dir + epsilon)
+    tmin = max(min(t1[0], t2[0]), max(min(t1[1], t2[1]), min(t1[2], t2[2])))
+    tmax = min(max(t1[0], t2[0]), min(max(t1[1], t2[1]), max(t1[2], t2[2])))
+    return (tmin, tmax) if (tmax - tmin) > 0.0 else ()
+
+
+def intersect_mpr(ray_origin, ray_dir, aabb_mpr, mpr_planes):
+    """Do ray-MPR intersection and return (tmin, tmax) on hit"""
+    closest = ()
+    for axis in range(0, 3):
+        if abs(ray_dir[axis]) < 0.001:
+            continue  # Avoid grazing intersections with plane
+        aabb_plane = [glm.vec3(aabb_mpr[0]), glm.vec3(aabb_mpr[1])]
+        aabb_plane[0][axis] = max(-0.5, min(0.5, mpr_planes[axis] - 1e-4))
+        aabb_plane[1][axis] = max(-0.5, min(0.5, mpr_planes[axis] + 1e-4))
+        hit = intersect_box(ray_origin, ray_dir, aabb_plane)
+        if hit and (not closest or hit[0] < closest[0]):
+            closest = hit
+    return closest

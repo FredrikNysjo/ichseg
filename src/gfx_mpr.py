@@ -1,4 +1,7 @@
+import gfx_utils
+
 import numpy as np
+import glm
 
 MPR_PLANE_X = 0
 MPR_PLANE_Y = 1
@@ -75,3 +78,29 @@ class MPR:
         elif volume.dtype == np.uint16:
             scale, shift = (1.0 / 65535.0, 0.0)  # Scale to range [0,1]
         return [(v + shift) * scale for v in self.level_range]
+
+    def get_depth_from_raycasting(self, x, y, w, h, volume, view_from_local, proj_from_view):
+        """Get depth value from performing raycasting against MPR planes"""
+        # Obtain ray origin in view space
+        ndc_pos = glm.vec3(x / float(w), 1.0 - y / float(h), 0.0) * 2.0 - 1.0
+        view_pos = gfx_utils.reconstruct_view_pos(ndc_pos, proj_from_view)
+
+        # Obtain ray origin and ray direction in volume local coordinates
+        local_from_view = glm.inverse(view_from_local)
+        ray_origin = glm.vec3(local_from_view * glm.vec4(view_pos, 1.0))
+        ray_dir = glm.vec3(local_from_view * glm.vec4(view_pos, 0.0))
+        if proj_from_view[2][3] == 0.0:  # Check if projection is orthographic
+            ray_dir = -glm.vec3(local_from_view[2])
+        ray_dir = glm.normalize(ray_dir)
+
+        # Do raycasting against MPR planes
+        mpr_planes = self.get_snapped_planes(volume)
+        aabb_mpr = [glm.vec3(-1.0), glm.vec3(1.0)]
+        hit = gfx_utils.intersect_mpr(ray_origin, ray_dir, aabb_mpr, mpr_planes)
+
+        depth = 1.0  # Set non-hit depth output to far clipping plane
+        if hit:  # Calculate actual depth output from MPR hit point
+            local_pos = ray_origin + hit[0] * ray_dir
+            clip_pos = proj_from_view * view_from_local * glm.vec4(local_pos, 1.0)
+            depth = (clip_pos.z / clip_pos.w) * 0.5 + 0.5
+        return depth

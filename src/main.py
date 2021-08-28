@@ -106,11 +106,11 @@ def do_rendering(ctx):
     filter_mode = gl.GL_NEAREST if ctx.mpr.show_voxels else gl.GL_LINEAR
 
     aspect = float(ctx.gfx.width) / ctx.gfx.height
-    proj = glm.perspective(glm.radians(ctx.settings.fov_degrees), aspect, 0.1, 10.0)
+    proj_from_view = glm.perspective(glm.radians(ctx.settings.fov_degrees), aspect, 0.1, 10.0)
     if ctx.settings.projection_mode:
         k = glm.radians(ctx.settings.fov_degrees)
-        proj = glm.ortho(-k * aspect, k * aspect, -k, k, 0.1, 10.0)
-    view = (
+        proj_from_view = glm.ortho(-k * aspect, k * aspect, -k, k, 0.1, 10.0)
+    view_from_world = (
         glm.translate(glm.mat4(1.0), glm.vec3(0, 0, -2))
         * glm.translate(glm.mat4(1.0), -ctx.panning.position)
         * glm.mat4_cast(ctx.trackball.quat)
@@ -119,12 +119,14 @@ def do_rendering(ctx):
     spacing = glm.vec3(header["spacing"])
     extent = glm.vec3(header["spacing"]) * glm.vec3(header["dimensions"])
     model = glm.scale(glm.mat4(1.0), extent / glm.max(extent.x, glm.max(extent.y, extent.z)))
-    mv = view * model
-    mvp = proj * view * model
+    view_from_local = view_from_world * model
+    proj_from_local = proj_from_view * view_from_local
 
+    # Clear framebuffer
     gl.glClearColor(0.0, 0.0, 0.0, 0.0)
     gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
 
+    # Draw background gradient
     program = ctx.gfx.programs["background"]
     gl.glUseProgram(program)
     gl.glDisable(gl.GL_DEPTH_TEST)
@@ -137,6 +139,7 @@ def do_rendering(ctx):
     gl.glViewport(0, 0, ctx.gfx.width, ctx.gfx.height)
     gl.glDepthMask(gl.GL_TRUE)
 
+    # Draw volume (as MPR planes or by MIP volume rendering)
     if max(ctx.images.volume.shape) > 1:
         program = ctx.gfx.programs["raycast"]
         gl.glUseProgram(program)
@@ -151,9 +154,11 @@ def do_rendering(ctx):
         gl.glTexParameteri(gl.GL_TEXTURE_3D, gl.GL_TEXTURE_MIN_FILTER, filter_mode)
         gl.glTexParameteri(gl.GL_TEXTURE_3D, gl.GL_TEXTURE_MAG_FILTER, filter_mode)
         gl.glUniformMatrix4fv(
-            gl.glGetUniformLocation(program, "u_mvp"), 1, False, glm.value_ptr(mvp)
+            gl.glGetUniformLocation(program, "u_mvp"), 1, False, glm.value_ptr(proj_from_local)
         )
-        gl.glUniformMatrix4fv(gl.glGetUniformLocation(program, "u_mv"), 1, False, glm.value_ptr(mv))
+        gl.glUniformMatrix4fv(
+            gl.glGetUniformLocation(program, "u_mv"), 1, False, glm.value_ptr(view_from_local)
+        )
         gl.glUniform1i(gl.glGetUniformLocation(program, "u_label"), 0)
         gl.glUniform1i(gl.glGetUniformLocation(program, "u_show_mask"), ctx.settings.show_mask)
         gl.glUniform1i(
@@ -172,11 +177,12 @@ def do_rendering(ctx):
         gl.glDrawArrays(gl.GL_TRIANGLE_STRIP, 0, 14)
         gl.glBindVertexArray(0)
 
+    # Draw line segments and control points for polygon tool
     if tools.polygon.enabled:
         program = ctx.gfx.programs["polygon"]
         gl.glUseProgram(program)
         gl.glUniformMatrix4fv(
-            gl.glGetUniformLocation(program, "u_mvp"), 1, False, glm.value_ptr(mvp)
+            gl.glGetUniformLocation(program, "u_mvp"), 1, False, glm.value_ptr(proj_from_local)
         )
         gl.glUniform1i(gl.glGetUniformLocation(program, "u_label"), 0)
         gl.glDisable(gl.GL_DEPTH_TEST)
@@ -189,11 +195,12 @@ def do_rendering(ctx):
         gl.glPointSize(1.0)
         gl.glEnable(gl.GL_DEPTH_TEST)
 
+    # Draw line segments and control points for livewire tool
     if tools.livewire.enabled:
         program = ctx.gfx.programs["polygon"]
         gl.glUseProgram(program)
         gl.glUniformMatrix4fv(
-            gl.glGetUniformLocation(program, "u_mvp"), 1, False, glm.value_ptr(mvp)
+            gl.glGetUniformLocation(program, "u_mvp"), 1, False, glm.value_ptr(proj_from_local)
         )
         gl.glUniform1i(gl.glGetUniformLocation(program, "u_label"), 0)
         gl.glDisable(gl.GL_DEPTH_TEST)
@@ -205,18 +212,71 @@ def do_rendering(ctx):
         gl.glBindVertexArray(0)
         gl.glEnable(gl.GL_DEPTH_TEST)
 
+
+def do_update(ctx):
+    """Update application state"""
+    tools = ctx.tools
+    tool_op = TOOL_OP_ADD if ctx.images.active_label == 0 else TOOL_OP_SUBTRACT
+
+    tools.brush.position.w = 0.0 if not tools.brush.enabled else tools.brush.size * 0.5
+    tools.smartbrush.position.w = (
+        0.0 if not tools.smartbrush.enabled else tools.smartbrush.size * 0.5
+    )
+
+    aspect = float(ctx.gfx.width) / ctx.gfx.height
+    proj_from_view = glm.perspective(glm.radians(ctx.settings.fov_degrees), aspect, 0.1, 10.0)
+    if ctx.settings.projection_mode:
+        k = glm.radians(ctx.settings.fov_degrees)
+        proj_from_view = glm.ortho(-k * aspect, k * aspect, -k, k, 0.1, 10.0)
+    view_from_world = (
+        glm.translate(glm.mat4(1.0), glm.vec3(0, 0, -2))
+        * glm.translate(glm.mat4(1.0), -ctx.panning.position)
+        * glm.mat4_cast(ctx.trackball.quat)
+    )
+    header = ctx.images.header
+    spacing = glm.vec3(header["spacing"])
+    extent = glm.vec3(header["spacing"]) * glm.vec3(header["dimensions"])
+    model = glm.scale(glm.mat4(1.0), extent / glm.max(extent.x, glm.max(extent.y, extent.z)))
+    view_from_local = view_from_world * model
+
+    if tools.polygon.rasterise and len(tools.polygon.points):
+        polygon = tools.polygon
+        # Rasterise polygon into mask image
+        result = polygon.apply(ctx.images.mask, tool_op)
+        if result:
+            cmd = cmd_volume.UpdateVolumeCmd(
+                ctx.images.mask, result[0], result[1], ctx.gfx.textures["mask"]
+            )
+            ctx.cmds.push_apply(cmd)
+        # Clean up for drawing next polygon
+        tools.cancel_drawing_all()
+        polygon.rasterise = False
+
+    if tools.livewire.rasterise and len(tools.livewire.points):
+        livewire = tools.livewire
+        # Rasterise livewire into mask image
+        result = livewire.apply(ctx.images.mask, tool_op)
+        if result:
+            cmd = cmd_volume.UpdateVolumeCmd(
+                ctx.images.mask, result[0], result[1], ctx.gfx.textures["mask"]
+            )
+            ctx.cmds.push_apply(cmd)
+        # Clean up for drawing next livewire
+        tools.cancel_drawing_all()
+        livewire.rasterise = False
+
     if ctx.mpr.enabled:
         x, y = glfw.get_cursor_pos(ctx.gfx.window)
         w, h = ctx.gfx.width, ctx.gfx.height
-        # depth = gl.glReadPixels(x, (h - 1) - y, 1, 1, gl.GL_DEPTH_COMPONENT, gl.GL_FLOAT)
-        depth = ctx.mpr.get_depth_from_raycasting(x, y, w, h, ctx.images.volume, mv, proj)
+        depth = ctx.mpr.get_depth_from_raycasting(
+            x, y, w, h, ctx.images.volume, view_from_local, proj_from_view
+        )
         ndc_pos = glm.vec3(0.0)
         ndc_pos.x = (float(x) / w) * 2.0 - 1.0
         ndc_pos.y = -((float(y) / h) * 2.0 - 1.0)
-        # ndc_pos.z = depth[0][0] * 2.0 - 1.0
         ndc_pos.z = depth * 2.0 - 1.0
-        view_pos = gfx_utils.reconstruct_view_pos(ndc_pos, proj)
-        texcoord = glm.vec3(glm.inverse(mv) * glm.vec4(view_pos, 1.0)) + 0.5001
+        view_pos = gfx_utils.reconstruct_view_pos(ndc_pos, proj_from_view)
+        texcoord = glm.vec3(glm.inverse(view_from_local) * glm.vec4(view_pos, 1.0)) + 0.5001
 
         tools.brush.position = glm.vec4(texcoord - 0.5, tools.brush.position.w)
         tools.smartbrush.position = glm.vec4(texcoord - 0.5, tools.smartbrush.position.w)
@@ -293,43 +353,6 @@ def do_rendering(ctx):
                 livewire.update_path(ctx.images.volume, texcoord, level_range, clicking)
                 # Also update polyline for preview
                 gfx_utils.update_mesh_buffer(ctx.gfx.buffers["polygon"], livewire.points)
-
-
-def do_update(ctx):
-    """Update application state"""
-    tools = ctx.tools
-    tool_op = TOOL_OP_ADD if ctx.images.active_label == 0 else TOOL_OP_SUBTRACT
-
-    tools.brush.position.w = 0.0 if not tools.brush.enabled else tools.brush.size * 0.5
-    tools.smartbrush.position.w = (
-        0.0 if not tools.smartbrush.enabled else tools.smartbrush.size * 0.5
-    )
-
-    if tools.polygon.rasterise and len(tools.polygon.points):
-        polygon = tools.polygon
-        # Rasterise polygon into mask image
-        result = polygon.apply(ctx.images.mask, tool_op)
-        if result:
-            cmd = cmd_volume.UpdateVolumeCmd(
-                ctx.images.mask, result[0], result[1], ctx.gfx.textures["mask"]
-            )
-            ctx.cmds.push_apply(cmd)
-        # Clean up for drawing next polygon
-        tools.cancel_drawing_all()
-        polygon.rasterise = False
-
-    if tools.livewire.rasterise and len(tools.livewire.points):
-        livewire = tools.livewire
-        # Rasterise livewire into mask image
-        result = livewire.apply(ctx.images.mask, tool_op)
-        if result:
-            cmd = cmd_volume.UpdateVolumeCmd(
-                ctx.images.mask, result[0], result[1], ctx.gfx.textures["mask"]
-            )
-            ctx.cmds.push_apply(cmd)
-        # Clean up for drawing next livewire
-        tools.cancel_drawing_all()
-        livewire.rasterise = False
 
     show_menubar(ctx)
     show_gui(ctx)

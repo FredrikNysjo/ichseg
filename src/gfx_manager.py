@@ -1,3 +1,6 @@
+import glm
+
+
 class GfxManager:
     def __init__(self):
         self.window = None
@@ -9,3 +12,7 @@ class GfxManager:
         self.vaos = {}
         self.buffers = {}
         self.textures = {}
+
+        self.proj_from_view = glm.mat4(1.0)
+        self.view_from_world = glm.mat4(1.0)
+        self.world_from_local = glm.mat4(1.0)

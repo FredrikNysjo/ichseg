@@ -13,6 +13,7 @@ class ToolManager:
         self.livewire = LivewireTool()
         self.smartbrush = SmartBrushTool()
         self.seedpaint = SeedPaintTool()
+        self.op = TOOL_OP_ADD
 
     def disable_all_except(self, selected):
         """Disable all tools except the selected one (provided as reference)"""

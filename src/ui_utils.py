@@ -1,3 +1,11 @@
+"""
+.. module:: ui_utils
+   :platform: Linux, Windows
+   :synopsis: UI utils for creating dialogs via Tkinter
+
+.. moduleauthor:: Fredrik Nysjo
+"""
+
 import tkinter as tk
 import tkinter.filedialog
 import tkinter.messagebox
@@ -5,7 +13,7 @@ import tkinter.messagebox
 
 def askopenfilename(filetypes):
     """Show an open dialog asking for a filename
-    
+
     Returns: string with selected filename, otherwise None
     """
     root = tk.Tk()
@@ -16,7 +24,7 @@ def askopenfilename(filetypes):
 
 def asksaveasfilename(filetypes, defaultextension):
     """Show a save dialog asking for a filename
-    
+
     Returns: string with selected filename, otherwise None
     """
     root = tk.Tk()
@@ -29,7 +37,7 @@ def asksaveasfilename(filetypes, defaultextension):
 
 def askokcancel(title, msg):
     """Show a confirmation dialog with options 'OK' and 'Cancel'
-    
+
     Returns: True if 'OK' was pressed, otherwise False
     """
     root = tk.Tk()

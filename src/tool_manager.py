@@ -1,3 +1,11 @@
+"""
+.. module:: tool_manager
+   :platform: Linux, Windows
+   :synopsis: Manager for handling state of segmentation tools
+
+.. moduleauthor:: Fredrik Nysjo
+"""
+
 from tool_common import *
 from tool_brush import BrushTool
 from tool_polygon import PolygonTool

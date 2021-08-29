@@ -1,3 +1,11 @@
+"""
+.. module:: cmd_volume
+   :platform: Linux, Windows
+   :synopsis: Command class for updating volume data via CmdManager
+
+.. moduleauthor:: Fredrik Nysjo
+"""
+
 import gfx_utils
 
 import numpy as np

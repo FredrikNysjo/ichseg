@@ -1,3 +1,11 @@
+"""
+.. module:: tool_common
+   :platform: Linux, Windows
+   :synopsis: Common constants used by tools
+
+.. moduleauthor:: Fredrik Nysjo
+"""
+
 TOOL_PLANE_X = 0
 TOOL_PLANE_Y = 1
 TOOL_PLANE_Z = 2

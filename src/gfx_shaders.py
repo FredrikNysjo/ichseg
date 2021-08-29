@@ -1,3 +1,11 @@
+"""
+.. module:: gfx_shaders
+   :platform: Linux, Windows
+   :synopsis: Module storing inlined source code for GLSL shaders
+
+.. moduleauthor:: Fredrik Nysjo
+"""
+
 raycast_vs = """
 #version 410
 

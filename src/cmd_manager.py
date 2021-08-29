@@ -1,3 +1,12 @@
+"""
+.. module:: cmd_manager
+   :platform: Linux, Windows
+   :synopsis: Manager for handling command stack for apply/undo
+
+.. moduleauthor:: Fredrik Nysjo
+"""
+
+
 class CmdManager:
     def __init__(self):
         self.stack = []

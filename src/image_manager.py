@@ -1,3 +1,11 @@
+"""
+.. module:: image_manager
+   :platform: Linux, Windows
+   :synopsis: Manager for handling image data (volumes and masks)
+
+.. moduleauthor:: Fredrik Nysjo
+"""
+
 import image_utils
 import image_nifti
 import image_dicom

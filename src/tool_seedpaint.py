@@ -1,3 +1,11 @@
+"""
+.. module:: tool_seedpaint
+   :platform: Linux, Windows
+   :synopsis: Tool for seeded segmentation (not implemented yet)
+
+.. moduleauthor:: Fredrik Nysjo
+"""
+
 from tool_common import *
 
 import numpy as np

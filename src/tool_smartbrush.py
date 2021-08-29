@@ -1,3 +1,11 @@
+"""
+.. module:: tool_smartbrush
+   :platform: Linux, Windows
+   :synopsis: Smart brush tool (2D or 3D) based on the SmartPaint method
+
+.. moduleauthor:: Fredrik Nysjo
+"""
+
 from tool_common import *
 
 import numpy as np

@@ -1,3 +1,11 @@
+"""
+.. module:: gfx_utils
+   :platform: Linux, Windows
+   :synopsis: Utils for interaction and creation of OpenGL resources
+
+.. moduleauthor:: Fredrik Nysjo
+"""
+
 import numpy as np
 import OpenGL.GL as gl
 import glm

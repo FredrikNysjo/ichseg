@@ -1,3 +1,11 @@
+"""
+.. module:: image_dicom
+   :platform: Linux, Windows
+   :synopsis: I/O utils for volume data in DICOM format
+
+.. moduleauthor:: Fredrik Nysjo
+"""
+
 import numpy as np
 import scipy as sp
 import scipy.ndimage

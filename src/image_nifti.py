@@ -1,3 +1,11 @@
+"""
+.. module:: image_nifti
+   :platform: Linux, Windows
+   :synopsis: I/O utils for volume data in NIfTI format
+
+.. moduleauthor:: Fredrik Nysjo
+"""
+
 import numpy as np
 
 import struct
@@ -91,7 +99,7 @@ def save_nii(filename, volume, header):
         struct.pack_into("h", hdr, 72, hdr_bitpix)
         struct.pack_into("ffffffff", hdr, 76, *hdr_pixdim)
         struct.pack_into("f", hdr, 108, hdr_vox_offset)
-        struct.pack_into("i", hdr, 344, 0x6e2b3100)  # Magic string
+        struct.pack_into("i", hdr, 344, 0x6E2B3100)  # Magic string
         stream.write(hdr + b"\0\0\0\0")  # Pad to match vox_offset
 
         # Write volume part (voxel byte data)

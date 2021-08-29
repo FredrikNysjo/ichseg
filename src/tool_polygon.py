@@ -1,3 +1,11 @@
+"""
+.. module:: tool_polygon
+   :platform: Linux, Windows
+   :synopsis: Polygon tool (2D only)
+
+.. moduleauthor:: Fredrik Nysjo
+"""
+
 from tool_common import *
 
 import numpy as np

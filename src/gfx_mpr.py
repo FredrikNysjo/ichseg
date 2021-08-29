@@ -1,3 +1,11 @@
+"""
+.. module:: gfx_mpr
+   :platform: Linux, Windows
+   :synopsis: Utils for multi-planar reformatting (MPR)
+
+.. moduleauthor:: Fredrik Nysjo
+"""
+
 import gfx_utils
 
 import numpy as np

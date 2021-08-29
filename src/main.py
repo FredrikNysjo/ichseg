@@ -1,3 +1,11 @@
+"""
+.. module:: main
+   :platform: Linux, Windows
+   :synopsis: GUI for interactive volume segmentation
+
+.. moduleauthor:: Fredrik Nysjo
+"""
+
 import cmd_manager
 import cmd_volume
 import gfx_mpr

@@ -1,3 +1,11 @@
+"""
+.. module:: tool_livewire
+   :platform: Linux, Windows
+   :synopsis: Livewire tool (2D only)
+
+.. moduleauthor:: Fredrik Nysjo
+"""
+
 from tool_common import *
 from tool_polygon import PolygonTool
 

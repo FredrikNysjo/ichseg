@@ -1,3 +1,11 @@
+"""
+.. module:: tool_brush
+   :platform: Linux, Windows
+   :synopsis: Basic round brush tool (2D or 3D)
+
+.. moduleauthor:: Fredrik Nysjo
+"""
+
 from tool_common import *
 
 import numpy as np

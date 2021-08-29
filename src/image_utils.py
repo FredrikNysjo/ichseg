@@ -1,3 +1,11 @@
+"""
+.. module:: image_utils
+   :platform: Linux, Windows
+   :synopsis: I/O utils for image data (2D images and VTK volumes)
+
+.. moduleauthor:: Fredrik Nysjo
+"""
+
 import numpy as np
 import PilLite.Image
 

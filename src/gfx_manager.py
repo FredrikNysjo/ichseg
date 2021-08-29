@@ -1,3 +1,11 @@
+"""
+.. module:: gfx_manager
+   :platform: Linux, Windows
+   :synopsis: Manager for handling OpenGL resources and other graphics-related things
+
+.. moduleauthor:: Fredrik Nysjo
+"""
+
 import glm
 
 

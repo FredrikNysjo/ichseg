@@ -44,7 +44,6 @@ class Settings:
         self.show_navigator = True
         self.show_input_guide = False
         self.dark_mode = True
-        self.basepath = ""
 
 
 class Context:
@@ -403,7 +402,6 @@ def show_menubar(ctx):
         if imgui.menu_item("Open volume...")[0]:
             filename = show_file_selection()
             if filename:
-                ctx.settings.basepath = filename  # FIXME
                 ctx.images.load_volume_fromfile(filename)
                 ctx.cmds.clear_stack()  # Clear undo history
                 ctx.mpr.update_minmax_range_from_volume(ctx.images.volume)

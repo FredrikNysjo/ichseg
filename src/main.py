@@ -18,6 +18,7 @@ import image_nifti
 import image_utils
 from tool_common import *
 import tool_manager
+import ui_imgui
 import ui_utils
 
 import glfw
@@ -718,7 +719,7 @@ def show_misc_settings(ctx):
     _, ctx.settings.bg_color2 = imgui.color_edit3("BG color 2", *ctx.settings.bg_color2)
     clicked, ctx.settings.dark_mode = imgui.checkbox("Dark mode", ctx.settings.dark_mode)
     if clicked:
-        set_gui_style(ctx.settings.dark_mode)
+        ui_imgui.set_gui_style(ctx.settings.dark_mode)
 
 
 def show_gui(ctx):
@@ -751,34 +752,6 @@ def show_gui(ctx):
         show_input_guide(ctx)
     if ctx.settings.show_navigator and max(ctx.images.volume.shape) > 1:
         show_navigator(ctx)
-
-
-def set_style_color_rgb(idx, r, g, b):
-    """Update global ImGui style color without changing alpha"""
-    style = imgui.get_style()
-    tmp = style.colors[idx]
-    style.colors[idx] = imgui.Vec4(r, g, b, tmp.w)
-
-
-def set_gui_style(dark_mode=False):
-    """Apply global ImGui style settings for light or dark theme"""
-    if dark_mode:
-        imgui.style_colors_dark()
-    else:
-        imgui.style_colors_light()
-    style = imgui.get_style()
-    style.window_rounding = 0.0
-    set_style_color_rgb(imgui.COLOR_HEADER, 0.5, 0.5, 0.5)
-    set_style_color_rgb(imgui.COLOR_HEADER_ACTIVE, 0.5, 0.5, 0.5)
-    set_style_color_rgb(imgui.COLOR_HEADER_HOVERED, 0.5, 0.5, 0.5)
-    set_style_color_rgb(imgui.COLOR_BUTTON, 0.5, 0.5, 0.5)
-    set_style_color_rgb(imgui.COLOR_BUTTON_ACTIVE, 0.5, 0.5, 0.5)
-    set_style_color_rgb(imgui.COLOR_BUTTON_HOVERED, 0.5, 0.5, 0.5)
-    set_style_color_rgb(imgui.COLOR_FRAME_BACKGROUND_ACTIVE, 0.5, 0.5, 0.5)
-    set_style_color_rgb(imgui.COLOR_FRAME_BACKGROUND_HOVERED, 0.5, 0.5, 0.5)
-    if dark_mode:
-        set_style_color_rgb(imgui.COLOR_WINDOW_BACKGROUND, 0.18, 0.18, 0.18)
-        set_style_color_rgb(imgui.COLOR_FRAME_BACKGROUND, 0.5, 0.5, 0.5)
 
 
 def char_callback(window, char):
@@ -923,7 +896,7 @@ def main():
 
     # Initialize ImGui
     imgui.create_context()
-    set_gui_style(ctx.settings.dark_mode)
+    ui_imgui.set_gui_style(ctx.settings.dark_mode)
     ctx.imgui_glfw = GlfwRenderer(ctx.gfx.window, False)
 
     # This should fix GUI-scaling for high-DPI screens:

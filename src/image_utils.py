@@ -42,22 +42,34 @@ def load_vtk(filename):
                 header["num_points"] = int(strings[1])
             if strings[0] == "SCALARS":
                 header["format"] = strings[2].strip()
-            if strings[0] == "LOOKUP_TABLE":
+            if strings[0] == "LOOKUP_TABLE" or strings[0] == "COLOR_SCALARS":
                 dim = header["dimensions"][::-1]
+
+                # Handle volumes exported with vtkStructuredPointsWriter that
+                # automatically interprets unsigned char scalars as color data
+                if strings[0] == "COLOR_SCALARS":
+                    header["format"] = "unsigned_char"
+                    ncomponents = int(strings[2])
+                    assert ncomponents == 1, "Non-grayscale volumes not supported"
+
                 if header["format"] == "unsigned_char":
-                    volume = np.frombuffer(stream.read(), dtype=np.uint8).reshape(dim)
+                    nbytes = header["num_points"] * 1
+                    volume = np.frombuffer(stream.read(nbytes), dtype=np.uint8).reshape(dim)
                     volume = volume.astype(dtype=np.uint8)  # Make writeable copy
                 elif header["format"] == "short":
+                    nbytes = header["num_points"] * 2
                     dt = np.dtype(np.int16).newbyteorder(">")
-                    volume = np.frombuffer(stream.read(), dtype=dt).reshape(dim)
+                    volume = np.frombuffer(stream.read(nbytes), dtype=dt).reshape(dim)
                     volume = volume.astype(dtype=np.int16)  # Reorder bytes
                 elif header["format"] == "unsigned_short":
+                    nbytes = header["num_points"] * 2
                     dt = np.dtype(np.uint16).newbyteorder(">")
-                    volume = np.frombuffer(stream.read(), dtype=dt).reshape(dim)
+                    volume = np.frombuffer(stream.read(nbytes), dtype=dt).reshape(dim)
                     volume = volume.astype(dtype=np.uint16)  # Reorder bytes
                 elif header["format"] == "float":
+                    nbytes = header["num_points"] * 4
                     dt = np.dtype(np.float32).newbyteorder(">")
-                    volume = np.frombuffer(stream.read(), dtype=dt).reshape(dim)
+                    volume = np.frombuffer(stream.read(nbytes), dtype=dt).reshape(dim)
                     volume = volume.astype(dtype=np.float32)  # Reorder bytes
                 else:
                     assert False, "Scalar type not supported: " + header["format"]

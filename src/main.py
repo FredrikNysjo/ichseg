@@ -565,8 +565,8 @@ def show_navigator(ctx):
 
 def show_volume_stats(ctx):
     sf = imgui.get_io().font_global_scale
-    imgui.set_next_window_size(250 * sf, 120 * sf)
-    imgui.set_next_window_position(ctx.gfx.width - 250 * sf, 18 * sf)
+    imgui.set_next_window_size(260 * sf, 120 * sf)
+    imgui.set_next_window_position(ctx.gfx.width - 260 * sf, 18 * sf)
     imgui.set_next_window_bg_alpha(0.8)
 
     flags = imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_COLLAPSE | imgui.WINDOW_NO_TITLE_BAR

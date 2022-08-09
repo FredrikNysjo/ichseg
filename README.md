@@ -50,3 +50,7 @@ and then applied to a source file like this:
 ## License
 
 The code is provided under the MIT license (see LICENSE.md).
+
+## Funding
+
+This work was supported by Vinnova grant (2020-03616) "Computer-aided Glioblastoma and Intracranial Aneurysm Treatment Response Quantification in Neuroradiology", and by AIDA technical fellowship project "Decision Support Tool for the Detection of Acute Intracranial Hemorrhage on Non-Contrast CT-Method Development".

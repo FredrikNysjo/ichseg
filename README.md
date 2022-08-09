@@ -1,6 +1,6 @@
 # ichseg
 
-An interactive tool and GUI for segmenting and annotating volumes stored in DICOM or VTK-format
+An interactive tool and GUI for segmenting and annotating volumes stored in DICOM, VTK, or NIFTI-format
 
 ## Example screenshots
 

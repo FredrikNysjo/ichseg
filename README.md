@@ -35,6 +35,12 @@ To run the GUI in the virtual environment from the terminal or Anaconda command 
     conda activate ichseg
     python src/main.py
 
+Note: On newer version of Ubuntu (22.04+), you might have to run the application with
+
+    LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6 python src/main.py
+
+if you encounter errors like `libGL error: failed to load driver`.
+
 ## Other notes
 
 ### Code style

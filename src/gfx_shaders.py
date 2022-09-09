@@ -139,6 +139,134 @@ void main()
 }
 """
 
+raycast_isosurface_fs = """
+#version 410
+
+#define MAX_STEPS 1000
+
+uniform int u_label=0;
+uniform int u_show_mask=1;
+uniform int u_show_mpr=1;
+uniform vec3 u_mpr_planes=vec3(0.0);
+uniform vec2 u_level_range=vec2(0.0, 1.0);
+uniform vec3 u_extent=vec3(1.0);
+uniform vec4 u_brush;
+uniform mat4 u_mvp;
+uniform mat4 u_mv;
+uniform sampler3D u_volume;
+uniform sampler3D u_mask;
+
+in vec3 v_ray_origin;
+in vec3 v_ray_dir;
+out vec4 rt_color;
+
+vec3 hsv2rgb(float h, float s, float v)
+{
+    vec3 k = fract(vec3(5.0, 3.0, 1.0) / 6.0 + h) * 6.0;
+    return v - v * s * clamp(min(k, 4.0 - k), 0.0, 1.0);
+}
+
+vec3 lds_r3(float n)
+{
+    float phi = 1.2207440846;
+    return fract(n / vec3(phi, phi * phi, phi * phi * phi));
+}
+
+bool intersectBox(vec3 ray_origin, vec3 ray_dir_inv, vec3 aabb[2], out float tmin, out float tmax)
+{
+    vec3 t1 = (aabb[0] - ray_origin) * ray_dir_inv;
+    vec3 t2 = (aabb[1] - ray_origin) * ray_dir_inv;
+    tmin = max(min(t1[0], t2[0]), max(min(t1[1], t2[1]), min(t1[2], t2[2])));
+    tmax = min(max(t1[0], t2[0]), min(max(t1[1], t2[1]), max(t1[2], t2[2])));
+    return (tmax - tmin) > 0.0;
+}
+
+vec3 imageGrad(sampler3D volume, vec3 p, vec3 delta)
+{
+    vec3 grad = vec3(0.0);
+    grad.x += texture(u_volume, p + 0.5 + vec3(delta.x, 0.0, 0.0)).r;
+    grad.x -= texture(u_volume, p + 0.5 + vec3(-delta.x, 0.0, 0.0)).r;
+    grad.y += texture(u_volume, p + 0.5 + vec3(0.0, delta.y, 0.0)).r;
+    grad.y -= texture(u_volume, p + 0.5 + vec3(0.0, -delta.y, 0.0)).r;
+    grad.z += texture(u_volume, p + 0.5 + vec3(0.0, 0.0, delta.z)).r;
+    grad.z -= texture(u_volume, p + 0.5 + vec3(0.0, 0.0, -delta.z)).r;
+    return grad;
+}
+
+vec3 computeLighting(vec3 view_pos, vec3 view_normal)
+{
+    vec3 V = -normalize(view_pos);
+    vec3 N = normalize(view_normal);  // Normalize just in case...
+    vec3 L = normalize(vec3(1.0, 2.0, 3.0));
+    vec3 H = normalize(L + V);
+
+    float alpha = 128.0;
+    vec3 F0 = vec3(0.04);
+    vec3 albedo = pow(hsv2rgb(fract(u_label * 0.618034), 0.5, 1.0), vec3(2.2));
+
+    float normalization = (8.0 + alpha) / 8.0;
+    vec3 diffuse = (albedo - F0) * (max(0.0, dot(N, L)) + 0.1);
+    vec3 specular = F0 * normalization * pow(max(0.0, dot(N, H)), alpha);
+    return diffuse + specular;
+}
+
+void main()
+{
+    ivec3 res = textureSize(u_volume, 0).xyz;
+    vec3 delta = 1.0 / res;
+    float isovalue = 0.5 / 255.0;
+
+    vec3 ray_origin = v_ray_origin;
+    vec3 ray_dir = normalize(v_ray_dir);
+    vec3 ray_dir_inv = clamp(1.0 / ray_dir, -9999.0, 9999.0);
+    vec3 ray_step = ray_dir * (1.0 * delta.x);  // FIXME
+    float jitter = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
+
+    // Do box intersection test
+    float tmin, tmax;
+    vec3 aabb[] = vec3[](vec3(-0.5), vec3(0.5));
+    bool hit = intersectBox(ray_origin, ray_dir_inv, aabb, tmin, tmax);
+    if (!hit) discard;
+
+    // Do ray marching to find isosurface
+    vec3 p = ray_origin;
+    float intensity = 0.0;
+    int nsteps = int(ceil((tmax - tmin) / length(ray_step)));
+    for (int i = 0; i < min(MAX_STEPS, nsteps); ++i) {
+        p = ray_origin + ray_step * (i + jitter);
+        intensity = texture(u_volume, p + 0.5).r;
+        if (intensity > isovalue) break;
+    }
+    if (intensity < isovalue) discard;
+
+    // Do refinement of intersection
+    p -= ray_step;
+    int nsteps_refinement = 4;
+    for (int i = 0; i < nsteps_refinement; ++i) {
+        p += ray_step * (i / float(nsteps_refinement));
+        if (texture(u_volume, p + 0.5).r > isovalue) break;
+    }
+
+    // Compute image gradient and normal at intersection point
+    vec3 local_grad = imageGrad(u_volume, p, delta);
+    vec3 local_normal = -normalize(local_grad);
+
+    vec3 view_pos = vec3(u_mv * vec4(p, 1.0));
+    vec3 view_normal = normalize(mat3(u_mv) * local_normal);
+
+    // Compute lighting
+    vec4 output_color = vec4(0.0);
+    output_color.rgb = computeLighting(view_pos, view_normal);
+    output_color.rgb = pow(output_color.rgb, vec3(1.0 / 2.2));
+    output_color.a = 1.0;
+
+    // Output fragment color and also depth for picking
+    rt_color = output_color;
+    vec4 clip_pos = u_mvp * vec4(p, 1.0);
+    gl_FragDepth = clamp((clip_pos.z / clip_pos.w) * 0.5 + 0.5, 0.0, 1.0);
+}
+"""
+
 polygon_vs = """
 #version 410
 

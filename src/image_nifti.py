@@ -58,6 +58,12 @@ def load_nii(filename):
             header["format"] = "float"
             volume = np.frombuffer(img, dtype=np.float32).reshape(dim)
             volume = volume.astype(dtype=np.float32)  # Make writeable copy
+        elif hdr_datatype == 64:  # code for double (64-bit)
+            # Convert scalars to floats so that we do not have to deal with
+            # double-precision when doing rendering or computations
+            header["format"] = "float"
+            volume = np.frombuffer(img, dtype=np.float64).reshape(dim)
+            volume = volume.astype(dtype=np.float32)  # Make writeable copy
         else:
             assert False, "Scalar type not supported: Unknown NIfTI datatype: " + hdr_datatype
     return volume, header

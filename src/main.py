@@ -33,18 +33,30 @@ import copy
 import time
 
 
+PROJECTION_MODE_PERSPECTIVE = 0
+PROJECTION_MODE_ORTHO = 1
+VIEW_MODE_2D = 0
+VIEW_MODE_3D = 1
+RAYCAST_MODE_MPR = 0
+RAYCAST_MODE_MIP = 1
+RAYCAST_MODE_ISOSURFACE = 2
+
+
 class Settings:
     def __init__(self):
         self.bg_color1 = [0.9, 0.9, 0.9]
         self.bg_color2 = [0.1, 0.1, 0.1]
         self.show_mask = True
         self.fov_degrees = 45.0
-        self.projection_mode = 1  # 0=perspective; 1=orthographic
-        self.view_mode = 0  # 0=2D (fixed views); 1=3D (free rotation)
+        self.projection_mode = PROJECTION_MODE_ORTHO
+        self.view_mode = VIEW_MODE_2D
+        self.raycast_mode = RAYCAST_MODE_MPR
         self.show_stats = False
         self.show_navigator = True
         self.show_input_guide = False
         self.dark_mode = True
+        self.sigma = 1.0
+        self.size_threshold = 100
 
 
 class Context:
@@ -80,6 +92,10 @@ def do_initialize(ctx):
     ctx.gfx.programs["raycast"] = gfx_utils.create_program(
         (gfx_shaders.raycast_vs, gl.GL_VERTEX_SHADER),
         (gfx_shaders.raycast_fs, gl.GL_FRAGMENT_SHADER),
+    )
+    ctx.gfx.programs["raycast_isosurface"] = gfx_utils.create_program(
+        (gfx_shaders.raycast_vs, gl.GL_VERTEX_SHADER),
+        (gfx_shaders.raycast_isosurface_fs, gl.GL_FRAGMENT_SHADER),
     )
     ctx.gfx.programs["polygon"] = gfx_utils.create_program(
         (gfx_shaders.polygon_vs, gl.GL_VERTEX_SHADER),
@@ -142,6 +158,8 @@ def do_rendering(ctx):
     # Draw volume (as MPR planes or raycasted MIP)
     if max(ctx.images.volume.shape) > 1:
         program = ctx.gfx.programs["raycast"]
+        if ctx.settings.raycast_mode == RAYCAST_MODE_ISOSURFACE:
+            program = ctx.gfx.programs["raycast_isosurface"]
         gl.glUseProgram(program)
         gl.glEnable(gl.GL_DEPTH_TEST)
         gl.glEnable(gl.GL_CULL_FACE)
@@ -164,7 +182,10 @@ def do_rendering(ctx):
         gl.glUniform1i(
             gl.glGetUniformLocation(program, "u_projection_mode"), ctx.settings.projection_mode
         )
-        gl.glUniform1i(gl.glGetUniformLocation(program, "u_show_mpr"), ctx.mpr.enabled)
+        gl.glUniform1i(
+            gl.glGetUniformLocation(program, "u_show_mpr"),
+            ctx.settings.raycast_mode == RAYCAST_MODE_MPR,
+        )
         gl.glUniform3f(gl.glGetUniformLocation(program, "u_mpr_planes"), *mpr_planes)
         gl.glUniform2f(gl.glGetUniformLocation(program, "u_level_range"), *level_range_scaled)
         gl.glUniform3f(gl.glGetUniformLocation(program, "u_extent"), *extent)
@@ -273,7 +294,7 @@ def do_update(ctx):
         ctx.tools.cancel_drawing_all()
         livewire.rasterise = False
 
-    if ctx.mpr.enabled:
+    if ctx.settings.raycast_mode == RAYCAST_MODE_MPR:
         x, y = glfw.get_cursor_pos(ctx.gfx.window)
         w, h = ctx.gfx.width, ctx.gfx.height
         view_from_local = ctx.gfx.view_from_world * ctx.gfx.world_from_local
@@ -660,7 +681,7 @@ def show_tools_settings(ctx):
         tools.disable_all_except(brush)
     if brush.enabled:
         imgui.indent(5)
-        _, brush.mode = imgui.combo("Mode", brush.mode, ["2D", "3D"])
+        _, brush.mode = imgui.combo("Tool mode", brush.mode, ["2D", "3D"])
         _, brush.size = imgui.slider_int("Brush size", brush.size, 1, 80)
         _, brush.antialiasing = imgui.checkbox("Antialiasing", brush.antialiasing)
         imgui.unindent(5)
@@ -682,7 +703,7 @@ def show_tools_settings(ctx):
         tools.disable_all_except(smartbrush)
     if smartbrush.enabled:
         imgui.indent(5)
-        _, smartbrush.mode = imgui.combo("Mode", smartbrush.mode, ["2D", "3D"])
+        _, smartbrush.mode = imgui.combo("Tool mode", smartbrush.mode, ["2D", "3D"])
         _, smartbrush.size = imgui.slider_int("Brush size", smartbrush.size, 1, 80)
         _, smartbrush.sensitivity = imgui.slider_float(
             "Sensitivity", smartbrush.sensitivity, 0.0, 10.0
@@ -703,13 +724,29 @@ def show_tools_settings(ctx):
         imgui.unindent(5)
 
 
+def show_filters_settings(ctx):
+    """Show widgets for filters settings"""
+    _, ctx.settings.sigma = imgui.slider_float("Sigma", ctx.settings.sigma, 0.0, 3.0)
+    clicked = imgui.button("Apply Gaussian smoothing")
+    if clicked:
+        print("Apply Gaussian smoothing")
+        print("Not implemented yet (TODO)")
+    _, ctx.settings.size_threshold = imgui.slider_int("Component threshold", ctx.settings.size_threshold, 0, 1000.0)
+    clicked = imgui.button("Remove small components")
+    if clicked:
+        print("Remove small components")
+        print("Not implemented yet (TODO)")
+
+
 def show_viewing_settings(ctx):
     """Show widgets for viewing settings"""
     clicked, ctx.settings.view_mode = imgui.combo("View mode", ctx.settings.view_mode, ["2D", "3D"])
-    if clicked and ctx.settings.view_mode == 0:
+    if clicked and ctx.settings.view_mode == VIEW_MODE_2D:
         # Snap view to the last plane when the user switches from 3D to 2D
         snap_view_to_plane(ctx, ctx.mpr.last_plane)
-    _, ctx.mpr.enabled = imgui.checkbox("Show MPR", ctx.mpr.enabled)
+    _, ctx.settings.raycast_mode = imgui.combo(
+        "Raycast mode", ctx.settings.raycast_mode, ["MPR", "MIP", "Isosurface"]
+    )
     _, ctx.mpr.show_voxels = imgui.checkbox("Show voxels", ctx.mpr.show_voxels)
 
 
@@ -738,6 +775,9 @@ def show_gui(ctx):
         imgui.text("")  # Add some spacing to next settings group
     if imgui.collapsing_header("Tools", flags=imgui.TREE_NODE_DEFAULT_OPEN)[0]:
         show_tools_settings(ctx)
+        imgui.text("")  # Add some spacing to next settings group
+    if imgui.collapsing_header("Filters (experimental)")[0]:
+        show_filters_settings(ctx)
         imgui.text("")  # Add some spacing to next settings group
     if imgui.collapsing_header("Viewing")[0]:
         show_viewing_settings(ctx)

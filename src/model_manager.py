@@ -56,9 +56,11 @@ class ModelManager:
 
         arguments = arguments.replace("{working_dir}", working_dir)
         arguments = arguments.replace("{input_filename}", input_filename)
+        arguments = arguments.replace("{input_basename}", input_basename)
         arguments = arguments.replace("{input_dir}", input_dir)
         arguments = arguments.replace("{input_basedir}", input_basedir)
         output_filename = output_filename.replace("{working_dir}", working_dir)
+        output_filename = output_filename.replace("{input_filename}", input_filename)
         output_filename = output_filename.replace("{input_basename}", input_basename)
         output_filename = output_filename.replace("{input_dir}", input_dir)
         output_filename = output_filename.replace("{input_basedir}", input_basedir)

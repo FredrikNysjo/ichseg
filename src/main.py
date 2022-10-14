@@ -16,6 +16,7 @@ import image_dicom
 import image_manager
 import image_nifti
 import image_utils
+import model_manager
 from tool_common import *
 import tool_manager
 import ui_imgui
@@ -54,6 +55,7 @@ class Context:
         # Managers for resources and undo stack
         self.gfx = gfx_manager.GfxManager()
         self.images = image_manager.ImageManager()
+        self.models = model_manager.ModelManager()
         self.tools = tool_manager.ToolManager()
         self.cmds = cmd_manager.CmdManager()
 
@@ -68,6 +70,8 @@ def do_initialize(ctx):
     ctx.images.labels = ["Label 255", "Label 0 (Clear)"]  # TODO
     ctx.images.load_volume_fromfile("")  # Create an empty volume and mask
     ctx.mpr.update_minmax_range_from_volume(ctx.images.volume)
+
+    ctx.models.load_model_info_from_json("models.json")
 
     # Set camera to default axial view (bottom view)
     ctx.trackball.quat = glm.quat(glm.radians(glm.vec3(180, 0, 0)))
@@ -458,6 +462,17 @@ def show_menubar(ctx):
             ctx.settings.show_stats = not ctx.settings.show_stats
         if imgui.menu_item("Show navigator")[0]:
             ctx.settings.show_navigator = not ctx.settings.show_navigator
+        imgui.end_menu()
+    if imgui.begin_menu("Models"):
+        for model in ctx.models.modelinfo:
+            if imgui.menu_item(model["name"] + "...")[0]:
+                ctx.models.launch_model(model, ctx.images.volume_filename)
+                if ctx.models.result_filename:
+                    ctx.images.load_mask_fromfile(ctx.models.result_filename)
+                    ctx.images.mask *= 255  # WORKAROUND: Re-scale to range [0,255]
+                    ctx.cmds.clear_stack()  # Clear undo history
+                    gfx_utils.update_texture_3d(ctx.gfx.textures["mask"], ctx.images.mask)
+                    ctx.tools.cancel_drawing_all()
         imgui.end_menu()
     if imgui.begin_menu("Help"):
         if imgui.menu_item("Quick reference")[0]:

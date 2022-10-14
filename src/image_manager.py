@@ -16,6 +16,7 @@ import numpy as np
 class ImageManager:
     def __init__(self):
         self.volume = None
+        self.volume_filename = ""
         self.header = None
         self.mask = None
         self.measured_volume_ml = 0.0
@@ -33,6 +34,7 @@ class ImageManager:
             self.volume, self.header = image_dicom.load_dicom(filename)
         else:
             self.volume, self.header = image_utils.create_dummy_volume()
+        self.volume_filename = filename
         self.mask = np.zeros(self.volume.shape, dtype=np.uint8)
 
     def load_mask_fromfile(self, filename):

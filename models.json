@@ -1,0 +1,28 @@
+{
+    "models": [
+        {
+            "name": "Vessel segmentation",
+            "conda_env": "dlseg",
+            "working_dir": "/home/fredrik/Development/code_subhashis/Vessel_Segmentation/",
+            "cmd": "python main.py",
+            "arguments": "{input_filename}",
+            "output_filename": "{working_dir}/Pred/{input_basename}.nii.gz"
+        },
+        {
+            "name": "Brain tumor segmentation",
+            "conda_env": "dlseg",
+            "working_dir": "/home/fredrik/Development/code_subhashis/BrainTumor_Seg_DL/",
+            "cmd": "python DLSegmentation.py",
+            "arguments": "{input_dir} att-unet",
+            "output_filename": "{working_dir}/predictions/{input_basedir}.nii.gz"
+        },
+        {
+            "name": "Brain tumor segmentation 2",
+            "conda_env": "dlseg",
+            "working_dir": "/home/fredrik/Development/code_swagata/",
+            "cmd": "python deeplearning_cli.py",
+            "arguments": "{input_filename}",
+            "output_filename": "{working_dir}/output.nii"
+        }
+    ]
+}

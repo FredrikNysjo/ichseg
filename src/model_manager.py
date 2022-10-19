@@ -70,6 +70,12 @@ class ModelManager:
             args += "conda activate " + conda_env + " ; "
             args += cmd + " " + arguments + " ; "
             args += '"'
+        elif sys.platform.startswith("win32"):
+            # Note: This should only work when Anaconda has been added to the
+            # PATH environment variable, and for filepaths without spaces
+            args = "cmd.exe /c "
+            args += "conda activate " + conda_env + " && "
+            args += cmd + " " + arguments
         else:
             print("Models are not supported yet on this platform")
             return
